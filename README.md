@@ -2660,3 +2660,161 @@ JPA는 스프링 만큼이나 방대하고, 학습해야 할 분량도 많습니
 실무에서는 JPA를 더욱 편리하게 사용하기 위해 스프링 데이터 JPA 와 Querydsl 이라는 기술을 함께 사용합니다. 
 
 근본적으로 중요한 것은 JPA입니다. 스프링 데이터 JPA, Querydsl은 JPA를 편리하게 사용하도록 도와주는 도구인 것이죠.
+
+# 2. ORM 개념 1 - SQL 중심적인 개발의 문제점
+
+관계형 DB (Oracle, MySQL)에서는 SQL만 사용할 수 있으므로 SQL 의존적인 개발을 할 수 밖에 없습니다.
+
+관계형 DB의 목적과 객체지향 프로그래밍의 목적이 일치하지 않습니다. 
+
+그러나, **객체를 저장할 수 있는 가장 현실적인 방안은 관계형 DB**입니다.
+
+### **객체와 관계형 데이터베이스의 차이**
+
+1. 상속
+
+![https://user-images.githubusercontent.com/52024566/132992161-2db24f9c-3106-4d50-bdf1-9b83088d63a3.png](https://user-images.githubusercontent.com/52024566/132992161-2db24f9c-3106-4d50-bdf1-9b83088d63a3.png)
+
+### **DB에서**
+
+`Album` 객체를 저장할 경우 - 객체를 분해하여 `artist`는 `album`에 저장, `name`, `price`, `dtype`은 `item`에 저장합니다.
+
+`Album` 객체를 조회할 경우 - 각 테이블을 조회하는 Join SQL 을 작성하고, 각각의 객체를 생성하고 …. 이런식으로 복잡합니다. **그래서 DB에 저장할 객체에는 상속 관계를 쓰지 않습니다.**
+
+### **자바에서**
+
+`Album` 객체를 저장할 경우
+
+```java
+list.add(album);
+```
+
+Album 객체를 조회할 경우
+
+```java
+Album album = list.get(albumId);
+
+⬇️
+
+Item item = list.get(albumId);
+```
+
+부모 타입으로 조회 후에 다형성을 활용할 수도 있습니다.
+
+### 연관관계
+
+객체 연관관계와 테이블의 연관관계를 비교해봅시다.
+
+![https://user-images.githubusercontent.com/52024566/132992295-e91aa5be-9080-47de-b9e5-efa4ab6a40a2.png](https://user-images.githubusercontent.com/52024566/132992295-e91aa5be-9080-47de-b9e5-efa4ab6a40a2.png)
+
+객체는 참조를 사용 - `member.getTeam()`
+
+테이블은 외래 키를 사용 - `JOIN ON M.TEAM_ID = T.TEAM_ID`
+
+**객체를 테이블에 맞추어 모델링했을 때 형태는 아래와 같습니다.**
+
+```java
+class Member {
+	String id;		// MEMBER_ID
+	Long teamId;	// TEAM_ID FK
+  String username;// USERNAME
+}
+
+class Team {
+	Long id;		// TEAM_ID PK
+	String name;	// NAME
+}
+```
+
+하지만 **객체답게 모델링했을 때는 아래와 같습니다.**
+
+```java
+class Member {
+	String id;		// MEMBER_ID
+	Team team;		// 참조로 연관관계를 맺는다
+  String username;// USERNAME
+    
+  Team getTeam() {
+      return team;
+  }
+}
+
+class Team {
+	Long id;		// TEAM_ID PK
+	String name;	// NAME
+}
+```
+
+**객체 모델링 조회**
+
+```java
+SELECT M.*, T.*
+  FROM MEMBER M
+  JOIN TEAM T ON M.TEAM_ID = T.TEAM_ID
+```
+
+```java
+public Member find(String memberId) {
+    // SQL 실행
+    Member member = new Member();
+    // 데이터베이스에서 조회한 회원 관련 정보 입력
+    Team team = new Team();
+    // 데이터베이스에서 조회한 팀 관련 정보 입력
+    
+    // 회원과 팀 관계 설정
+    member.setTeam(team);
+    return member;
+}
+```
+
+이런 식으로 굉장히 번거로운 작업을 거쳐야 합니다.
+
+**객체 그래프 탐색**
+
+객체는 자유롭게 객체 그래프를 탐색할 수 있어야 합니다. 하지만 실행하는 SQL 에 따라 탐색 범위가 결정되기 때문에 **SQL 중심적인 개발에서는 객체 그래프 탐색이 불가능**합니다.
+
+**엔티티 신뢰 문제**
+
+```java
+class MemberService {
+    public void process() {
+        Member member = memberDAO.find(memberId);
+        member.getTeam(); // 사용 가능한가?
+        member.getOrder().getDelivery(); // 사용 가능한가?
+    }
+}
+```
+
+SQL에서 탐색된 객체 이외에는 사용할 수 없으므로 **엔티티를 신뢰할 수 없습니다.** 신뢰할 수 없다는 것은 get 문법을 통해서 불러왔을 때 `null` 이 아닌지 등의 문제를 말합니다. 
+
+계층 아키텍쳐에서는 이전 계층에서 넘어온 내용을 신뢰할 수 있어야 하는데 SQL 중심적인 개발에서는 그것이 불가능하므로 객체가 SQL에 의존하게 됩니다.
+
+그렇다고 모든 객체를 미리 로딩할 수 없으므로 상황에 따라 동일한 회원 조회 메서드를 여러 벌 생성해야 합니다.
+
+### 생성한 객체 비교
+
+**SQL 중심적인 개발**
+
+```java
+String memberId = "100";
+Member member1 = memberDAO.getMember(memberId);
+Member member2 = memberDAO.getMember(memberId);
+
+member1 == member2; // 다르다.
+```
+
+**자바 컬렉션**
+
+```java
+String memberId = "100";
+Member member1 = list.get(memberId);
+Member member2 = list.get(memberId);
+
+member1 == member2; // 같다.
+```
+
+SQL 중심적인 개발에서는 `getMember()`을 호출할 때 `New Member()`로 객체를 생성하기 때문에 `member1`과 `member2`가 다릅니다. 
+
+그러나 자바 컬렉션에서 조회할 경우 `member1`과 `member2`의 참조 값이 같기 때문에 두 객체는 같습니다.
+
+**이렇게 객체를 객체답게 모델링할수록 불필요해보이는 매핑 작업만 늘어납니다.**
