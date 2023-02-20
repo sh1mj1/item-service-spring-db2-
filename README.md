@@ -2905,3 +2905,69 @@ JPA 을 사용하여 **생산성**이 향상됩니다. 간단하게 아래 코�
 그리고 결국 JPA 는 자바의 표준입니다!
 
 이렇게 JPA, ORM 을 소개하고 사용해야 하는 이유를 설명했습니다. 다음 글에서는 본격적으로 JPA 을 프로젝트에 직접 적용해 볼 것입니다.
+
+# 4. JPA 설정
+이전 글에 이어서 JPA 을 프로젝트에 실제로 적용해봅시다. 먼저 설정부터 해야합니다.
+
+`spring-boot-starter-data-jpa` 라이브러리를 사용하면 JPA와 스프링 데이터 JPA를 스프링 부트와 통합하고, 설정도 아주 간단히 할 수 있습니다. (스프링 데이터 JPA 는 다음 글에서 구체적으로 설명할 것입니다.)
+
+`build.gradle`에 다음 의존 관계를 추가합니다.
+
+```java
+//JPA, 스프링 데이터 JPA 추가
+implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+```
+
+`build.gradle`에서 다음 의존 관계를 제거합니다.
+
+```java
+//JdbcTemplate 추가
+//implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+```
+
+`spring-boot-starter-data-jpa`는 `spring-boot-starter-jdbc`도 함께 포함(의존)하므로 해당 라이브러리 의존관계를 제거해도 됩니다. 
+
+`build.gradle` - 의존관계 전체
+
+```java
+dependencies {
+  implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+  implementation 'org.springframework.boot:spring-boot-starter-web'
+  
+  //JdbcTemplate 추가
+  //implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+  //MyBatis 추가
+  implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:2.2.0'
+  //JPA, 스프링 데이터 JPA 추가
+  implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+  
+  //H2 데이터베이스 추가
+  runtimeOnly 'com.h2database:h2'
+  compileOnly 'org.projectlombok:lombok'
+  annotationProcessor 'org.projectlombok:lombok'
+  testImplementation 'org.springframework.boot:spring-boot-starter-test'
+  
+  //테스트에서 lombok 사용
+  testCompileOnly 'org.projectlombok:lombok'
+  testAnnotationProcessor 'org.projectlombok:lombok'
+}
+```
+
+다음과 같은 라이브러리가 추가되었습니다.
+
+- `hibernate-core`: JPA 구현체인 하이버네이트 라이브러리
+- `jakarta.persistence-api`: JPA 인터페이스
+- `spring-data-jpa`: 스프링 데이터 JPA 라이브러리
+
+`**application.properties`에 다음 설정을 추가합니다.**
+
+`main, test - application.properties`
+
+```java
+#JPA log
+logging.level.org.hibernate.SQL=DEBUG
+logging.level.org.hibernate.type.descriptor.sql.BasicBinder=TRACE
+```
+
+- `org.hibernate.SQL=DEBUG`: 하이버네이트가 생성하고 실행하는 SQL을 로그 메시지로 확인할 수 있습니다.
+- `org.hibernate.type.descriptor.sql.BasicBinder=TRACE`: SQL에 바인딩 되는 파라미터를 확인할 수 있습니다.
