@@ -344,3 +344,129 @@ item_name=itemName, quantity=price, price=quantity
 **개발을 할 때는 코드를 몇줄 줄이는 편리함도 중요하지만, 모호함을 제거해서 코드를 명확하게 만드는 것이 유지보수 관점에서 매우 중요합니다.**
 
 이처럼 파라미터를 순서대로 바인딩 하는 것은 편리하기는 하지만, 순서가 맞지 않아서 버그가 발생할 수도 있으므로 주의해서 사용해야 합니다.
+
+# 6. JdbcTemplate - 이름 지정 파라미터 2
+
+### **이름 지정 바인딩**
+
+JdbcTemplate 은 이런 문제를 보완하기 위해 `NamedParameterJdbcTemplate`라는 이름을 지정해서 파라미터를 바인딩 하는 기능을 제공합니다.
+
+`JdbcTemplateItemRepositoryV2`
+
+```java
+/**
+* NamedParameterJdbcTemplate
+* SqlParameterSource
+* - BeanPropertySqlParameterSource
+* - MapSqlParameterSource
+* Map
+*
+* BeanPropertyRowMapper
+*
+*/
+@Slf4j
+@Repository
+public class JdbcTemplateItemRepositoryV2 implements ItemRepository {
+  
+    private final NamedParameterJdbcTemplate template;
+  
+    public JdbcTemplateItemRepositoryV2(DataSource dataSource) {
+        this.template = new NamedParameterJdbcTemplate(dataSource);
+    }
+  
+    @Override
+    public Item save(Item item) {
+        String sql = "insert into item (item_name, price, quantity) " +
+        "values (:itemName, :price, :quantity)";
+      
+        SqlParameterSource param = new BeanPropertySqlParameterSource(item);
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        template.update(sql, param, keyHolder);
+      
+        Long key = keyHolder.getKey().longValue();
+        item.setId(key);
+        return item;
+    }
+    @Override
+    public void update(Long itemId, ItemUpdateDto updateParam) {
+        String sql = "update item " +
+        "set item_name=:itemName, price=:price, quantity=:quantity " +
+        "where id=:id";
+      
+        SqlParameterSource param = new MapSqlParameterSource()
+            .addValue("itemName", updateParam.getItemName())
+            .addValue("price", updateParam.getPrice())
+            .addValue("quantity", updateParam.getQuantity())
+            .addValue("id", itemId); //이 부분이 별도로 필요하다.
+        template.update(sql, param);
+    }
+  
+    @Override
+    public Optional<Item> findById(Long id) {
+        String sql = "select id, item_name, price, quantity from item where id = :id";
+      
+        try {
+            Map<String, Object> param = Map.of("id", id);
+            Item item = template.queryForObject(sql, param, itemRowMapper());
+            return Optional.of(item);
+        } catch (EmptyResultDataAccessException e) {
+            return Optional.empty();
+        }
+    }
+  
+    @Override
+    public List<Item> findAll(ItemSearchCond cond) {
+      
+        Integer maxPrice = cond.getMaxPrice();
+        String itemName = cond.getItemName();
+      
+        SqlParameterSource param = new BeanPropertySqlParameterSource(cond);
+      
+        String sql = "select id, item_name, price, quantity from item";
+        //동적 쿼리
+        if (StringUtils.hasText(itemName) || maxPrice != null) {
+            sql += " where";
+        }
+        boolean andFlag = false;
+        if (StringUtils.hasText(itemName)) {
+            sql += " item_name like concat('%',:itemName,'%')";
+            andFlag = true;
+        }
+      
+        if (maxPrice != null) {
+            if (andFlag) {
+                sql += " and";
+            }
+            sql += " price <= :maxPrice";
+        }
+      
+        log.info("sql={}", sql);
+        return template.query(sql, param, itemRowMapper());
+    }
+  
+    private RowMapper<Item> itemRowMapper() {
+        return BeanPropertyRowMapper.newInstance(Item.class); //camel 변환 지원
+    }
+}
+```
+
+**기본**
+
+`JdbcTemplateItemRepositoryV2`는 `ItemRepository` 인터페이스를 구현했습니다.
+
+`this.template = new NamedParameterJdbcTemplate(dataSource)`
+
+- `NamedParameterJdbcTemplate`도 내부에 `dataSource`가 필요합니다.
+- `JdbcTemplateItemRepositoryV2` 생성자를 보면 의존관계 주입은 `dataSource`를 받고 내부에서 `NamedParameterJdbcTemplate`을 생성해서 보유합니다. 스프링에서는 `JdbcTemplate` 관련 기능을 사용할 때 관례상 이 방법을 많이 사용합니다.
+- 물론 `NamedParameterJdbcTemplate`을 스프링 빈으로 직접 등록하고 주입받아도 됩니다.
+
+`save()` 
+
+SQL에서 다음과 같이 `?` 대신에 `:파라미터이름`을 받는 것을 확인할 수 있습니다.
+
+```java
+insert into item (item_name, price, quantity) " +
+"values (:itemName, :price, :quantity)"
+```
+
+추가로 `NamedParameterJdbcTemplate`은 데이터베이스가 생성해주는 키를 매우 쉽게 조회하는 기능도 제공합니다.
