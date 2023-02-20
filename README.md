@@ -2294,3 +2294,81 @@ public class ItemServiceApplication {}
 > **주의 -** H2 데이터베이스 서버를 먼저 실행해야 함
 > 
 
+# 5. MyBatis 적용3 - 분석
+
+`ItemMapper` 인터페이스
+
+```java
+@Mapper
+public interface ItemMapper {
+  void save(Item item);
+  
+  void update(@Param("id") Long id, @Param("updateParam") ItemUpdateDto updateParam);
+  
+  List<Item> findAll(ItemSearchCond itemSearch);
+  
+  Optional<Item> findById(Long id);
+}
+```
+
+그런데 `ItemMapper` 매퍼 인터페이스의 구현체가 없는데 어떻게 동작한 것일까요? 
+
+이 부분은 MyBatis 스프링 연동 모듈에서 자동으로 처리되는 것입니다.
+
+### **설정 원리**
+
+![https://user-images.githubusercontent.com/52024566/187686571-ba8fa9fa-4732-469c-8487-e16398d329cf.png](https://user-images.githubusercontent.com/52024566/187686571-ba8fa9fa-4732-469c-8487-e16398d329cf.png)
+
+1. 애플리케이션 로딩 시점에 MyBatis 스프링 연동 모듈은 `@Mapper`가 붙어있는 인터페이스를 조사합니다.
+2. 해당 인터페이스가 발견되면 동적 프록시 기술을 사용해서 `ItemMapper` 인터페이스의 구현체를 생성합니다.
+3. 생성된 구현체를 스프링 빈으로 등록합니다.
+
+실제 동적 프록시 기술이 사용되었는지 간단히 확인해봅시다.
+
+`MyBatisItemRepository` - 로그 추가
+
+```java
+@Slf4j
+@Repository
+@RequiredArgsConstructor
+public class MyBatisItemRepository implements ItemRepository {
+  
+    private final ItemMapper itemMapper;
+  
+    @Override
+    public Item save(Item item) {
+        log.info("itemMapper class={}", itemMapper.getClass());
+        itemMapper.save(item);
+        return item;
+    }
+}
+```
+
+실행해서 주입 받은 `ItemMapper` 의 클래스를 출력해봅시다.
+
+**실행 결과**
+
+```java
+itemMapper class=class jdk.proxy.$Proxy66
+```
+
+출력해보면 JDK 동적 프록시가 적용된 것을 확인할 수 있습니다.
+
+### **매퍼 구현체**
+
+마이바티스 스프링 연동 모듈이 만들어주는 `ItemMapper`의 구현체 덕분에 인터페이스 만으로 편리하게 XML의 데이터를 찾아서 호출할 수 있습니다.
+
+원래 마이바티스를 사용하려면 더 번잡한 코드를 거쳐야 하는데, 이런 부분을 인터페이스 하나로 매우 깔끔하고 편리하게 사용할 수 있습니다.
+
+매퍼 구현체는 예외 변환까지 처리해줍니다. MyBatis 에서 발생한 예외를 스프링 예외 추상화인 `DataAccessException`에 맞게 변환해서 반환해줍니다. JdbcTemplate 이 제공하는 예외 변환 기능을 여기서도 제공한다고 이해하면 됩니다.
+
+### **정리**
+
+매퍼 구현체 덕분에 마이바티스를 스프링에 편리하게 통합해서 사용할 수 있습니다.
+
+매퍼 구현체를 사용하면 스프링 예외 추상화도 함께 적용할 수 있습니다.
+
+마이바티스 스프링 연동 모듈이 많은 부분을 자동으로 설정해주는데, 데이터베이스 커넥션, 트랜잭션과 관련된 기능도 마이바티스와 함께 연동하고, 동기화됩니다.
+
+> 참고 - 마이바티스 스프링 연동 모듈이 자동으로 등록해주는 부분은 MybatisAutoConfiguration 클래스를 참고하면 됩니다.
+>
