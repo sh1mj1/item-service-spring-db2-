@@ -2372,3 +2372,150 @@ itemMapper class=class jdk.proxy.$Proxy66
 
 > 참고 - 마이바티스 스프링 연동 모듈이 자동으로 등록해주는 부분은 MybatisAutoConfiguration 클래스를 참고하면 됩니다.
 >
+
+# 6. MyBatis 기능 정리1 -동적 쿼리
+
+- MyBatis 공식 메뉴얼: https://mybatis.org/mybatis-3/ko/index.html
+- MyBatis 스프링 공식 메뉴얼: https://mybatis.org/spring/ko/index.html
+
+### **동적 SQL**
+
+**마이바티스가 제공하는 최고의 기능이자 마이바티스를 사용하는 이유는 바로 동적 SQL 기능 때문입니다.** 
+
+동적 쿼리를 위해 제공되는 기능은 다음과 같습니다.
+
+- `if`
+- `choose (when, otherwise)`
+- `trim (where, set)`
+- `foreach`
+
+**if**
+
+```xml
+<select id="findActiveBlogWithTitleLike"
+    resultType="Blog">
+    SELECT * FROM BLOG
+    WHERE state = ‘ACTIVE’
+    <if test="title != null">
+      AND title like #{title}
+    </if>
+</select>
+```
+
+해당 조건에 따라 값을 추가할지 말지 판단합니다.
+
+내부의 문법은 [OGNL](https://ko.wikipedia.org/wiki/OGNL)을 사용합니다.
+
+**choose, when, otherwise**
+
+```xml
+<select id="findActiveBlogLike"
+    resultType="Blog">
+    SELECT * FROM BLOG WHERE state = ‘ACTIVE’
+    <choose>
+      <when test="title != null">
+        AND title like #{title}
+      </when>
+      <when test="author != null and author.name != null">
+        AND author_name like #{author.name}
+      </when>
+      <otherwise>
+        AND featured = 1
+      </otherwise>
+    </choose>
+</select>
+```
+
+자바의 `switch` 구문과 유사한 구문입니다.
+
+**trim, where, set**
+
+```xml
+<select id="findActiveBlogLike"
+resultType="Blog">
+    SELECT * FROM BLOG
+    WHERE
+    <if test="state != null">
+      state = #{state}
+    </if>
+    <if test="title != null">
+      AND title like #{title}
+    </if>
+    <if test="author != null and author.name != null">
+      AND author_name like #{author.name}
+    </if>
+</select>
+```
+
+이 예제의 문제점은 문장을 모두 만족하지 않을 때 발생합니다.
+
+```sql
+SELECT * FROM BLOG
+WHERE
+```
+
+이렇게 SQL 문이 WHERE 로 끝나버립니다.
+
+`title`만 만족할 때도 문제가 발생합니다.
+
+```sql
+SELECT * FROM BLOG
+WHERE
+AND title like ‘someTitle’
+```
+
+결국 `WHERE` 문을 언제 넣어야 할지 상황에 따라서 동적으로 달라지는 문제가 있습니다. 
+
+이 때 `<where>`를 사용하면 이런 문제를 해결할 수 있습니다.
+
+```xml
+<select id="findActiveBlogLike"
+    resultType="Blog">
+    SELECT * FROM BLOG
+    <where>
+    <if test="state != null">
+        state = #{state}
+    </if>
+    <if test="title != null">
+        AND title like #{title}
+    </if>
+    <if test="author != null and author.name != null">
+        AND author_name like #{author.name}
+    </if>
+    </where>
+</select>
+```
+
+`<where>`는 문장이 없으면 `where`를 추가하지 않습니다. 문장이 있으면 `where`를 추가합니다. 만약 `and`가 먼저 시작된다면 `and`를 삭제하게 됩니다.
+
+다음과 같이 `trim`이라는 기능으로 사용해도 이렇게 정의하면 `<where>`와 같은 기능을 수행합니다.
+
+```xml
+<trim prefix="WHERE" prefixOverrides="AND |OR ">
+...
+</trim>
+```
+
+**foreach**
+
+```xml
+<select id="selectPostIn" resultType="domain.blog.Post">
+    SELECT *
+    FROM POST P
+    <where>
+      <foreach item="item" index="index" collection="list"
+        open="ID in (" separator="," close=")" nullable="true">
+        #{item}
+      </foreach>
+    </where>
+</select>
+```
+
+컬렉션을 반복 처리할 때 사용합니다. `where in (1,2,3,4,5,6)`와 같은 문장을 쉽게 완성할 수 있습니다.
+
+파라미터로 `List`를 전달합니다.
+
+> 참고 - 동적 쿼리에 대한 자세한 내용은 다음을 참고합시다. 
+https://mybatis.org/mybatis-3/ko/dynamic-sql.html
+>
+
