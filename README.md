@@ -2818,3 +2818,90 @@ SQL 중심적인 개발에서는 `getMember()`을 호출할 때 `New Member()`
 그러나 자바 컬렉션에서 조회할 경우 `member1`과 `member2`의 참조 값이 같기 때문에 두 객체는 같습니다.
 
 **이렇게 객체를 객체답게 모델링할수록 불필요해보이는 매핑 작업만 늘어납니다.**
+
+# 3. ORM 개념 2 - JPA 소개
+
+이제 JPA 을 개념적으로 설명하겠습니다.
+
+### J**PA 이란?**
+
+JPA 는 Java Persistence API 의 약자로 자바 진영의 **ORM** 기술 표준입니다.
+
+### **ORM 이란?**
+
+ORM 은 Object-relational mapping(객체 관계 매핑)의 약자입니다.
+
+**객체는 객체대로 설계**하고 **관계형 데이터베이스는 관계형 데이터베이스대로 설계**하는 것이 핵심입니다.
+
+ORM 프레임워크가 중간에서 매핑을 담당해줍니다. 대중적인 언어에는 대부분 ORM 기술이 존재합니다. 당연히 파이썬에도 ORM 기술이 따로 있습니다.
+
+### **JPA 동작**
+
+**저장**
+
+![https://user-images.githubusercontent.com/52024566/132992893-ccfa7103-2a55-4f81-80c2-4e4bd269fefd.png](https://user-images.githubusercontent.com/52024566/132992893-ccfa7103-2a55-4f81-80c2-4e4bd269fefd.png)
+
+**조회**
+
+![https://user-images.githubusercontent.com/52024566/132992894-d55e1e4b-5833-44cc-bb30-4a1006a840ac.png](https://user-images.githubusercontent.com/52024566/132992894-d55e1e4b-5833-44cc-bb30-4a1006a840ac.png)
+
+### **JPA는 표준 명세**
+
+JPA는 인터페이스의 모음입니다.
+
+JPA 2.1 표준 명세를 구현한 3가지 구현체가 아래 그림처럼 존재합니다.
+
+![https://user-images.githubusercontent.com/52024566/132992940-b11dc52d-524e-4897-8b8a-ff101b5af5d4.png](https://user-images.githubusercontent.com/52024566/132992940-b11dc52d-524e-4897-8b8a-ff101b5af5d4.png)
+
+보통 Hibernate 을 가장 대중적으로 사용합니다.
+
+### **JPA를 왜 사용해야 하는가?**
+
+SQL 중심적인 개발에서 객체 중심으로 개발이 가능해집니다.
+
+JPA 을 사용하여 **생산성**이 향상됩니다. 간단하게 아래 코드로 저장, 조회, 수정, 삭제를 구현할 수 있습니다.
+
+- 저장: jpa.persist(member)
+- 조회: Member member = jpa.find(memberId)
+- 수정: member.setName(“변경할 이름”)
+- 삭제: jpa.remove(member)
+
+또한 **유지보수**에도 이점이 있습니다.
+
+- 기존에는 필드 변경시 모든 SQL 문을 수정해야 했지만, JPA에서는 필드만 추가하면 SQL은 JPA가 처리해줍니다.
+
+**패러다임의 불일치를 해결**할 수 있습니다.
+
+1. JPA와 상속
+특정 객체를 저장할 경우 상속 관계를 JPA가 분석하여 필요한 쿼리를 JPA가 생성해줍니다.
+2. JPA와 연관관계, JPA와 객체 그래프 탐색
+지연 로딩을 사용하여 신뢰할 수 있는 엔티티, 계층을 제공해줍니다.
+3. JPA와 비교하기
+동일한 트랜잭션에서 조회한 엔티티는 같음을 보장합니다.
+
+또한 **성능 최적화 기능**도 있습니다.
+
+1차 캐시와 동일성(identity)을 보장합니다.
+
+1. 같은 트랜잭션 안에서는 같은 엔티티를 반환하여 약간의 조회 성능이 향상됩니다.
+2. DB Isolation Level 이 Read Commit 이어도 애플리케이션에서 Repeatable Read 을 보장합니다.
+3. 트랜잭션을 지원하는 쓰기 지연(transactional write-behind)
+    1. 트랜잭션을 커밋할 때까지 INSERT SQL을 모읍니다.
+    2. JDBC BATCH SQL 기능을 사용해서 모았던 INSERT SQL 을 한 번에 전송합니다.
+    3. UPDATE, DELETE로 인한 로우(ROW)락 시간을 최소화합니다.
+    4. 트랜잭션 커밋 시 UPDATE, DELETE SQL 실행하고, 바로 커밋해줍니다.
+    5. 지연 로딩(Lazy Loading) 기능을 수행해줍니다.
+        
+        (지연 로딩: 객체가 실제 사용될 때 로딩 )
+        
+        (즉시 로딩: JOIN SQL 로 한번에 연관된 객체까지 미리 조회)
+        
+    
+    ![https://user-images.githubusercontent.com/52024566/132993188-add758c8-5c57-4be8-ae05-ee5a6b6ea74b.png](https://user-images.githubusercontent.com/52024566/132993188-add758c8-5c57-4be8-ae05-ee5a6b6ea74b.png)
+    
+
+또한 데이터 접근 추상화을 제공하며 벤더 독립성을 제공합니다.
+
+그리고 결국 JPA 는 자바의 표준입니다!
+
+이렇게 JPA, ORM 을 소개하고 사용해야 하는 이유를 설명했습니다. 다음 글에서는 본격적으로 JPA 을 프로젝트에 직접 적용해 볼 것입니다.
