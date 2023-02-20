@@ -23,15 +23,16 @@ import javax.sql.DataSource;
 @SpringBootApplication(scanBasePackages = "hello.itemservice.web")
 public class ItemServiceApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(ItemServiceApplication.class, args);
-	}
+    public static void main(String[] args) {
+        SpringApplication.run(ItemServiceApplication.class, args);
+    }
 
-	@Bean
-	@Profile("local")
-	public TestDataInit testDataInit(ItemRepository itemRepository) {
-		return new TestDataInit(itemRepository);
-	}
+    @Bean
+    @Profile("local")
+    public TestDataInit testDataInit(ItemRepository itemRepository) {
+        return new TestDataInit(itemRepository);
+    }
+	/*
 	@Bean
 	@Profile("test")
 	public DataSource dataSource(){
@@ -43,5 +44,6 @@ public class ItemServiceApplication {
 		dataSource.setPassword("");
 		return dataSource;
 	}
+	 */
 
 }

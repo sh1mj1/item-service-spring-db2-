@@ -1699,3 +1699,89 @@ exists item CASCADE
 integer, quantity integer, primary key (id) )
 ```
 
+
+
+# 6. 테스트 - 스프링 부트와 임베디드 모드
+
+스프링 부트는 개발자에게 정말 많은 편리함을 제공하는데, 임베디드 데이터베이스에 대한 설정도 기본으로 제공합니다. 
+
+스프링 부트는 데이터베이스에 대한 별다른 설정이 없으면 임베디드 데이터베이스를 사용합니다.
+
+앞서 직접 설정했던 메모리 DB용 데이터소스를 주석처리합시다.
+
+`ItemServiceApplication`
+
+```java
+@Slf4j
+//@Import(MemoryConfig.class)
+//@Import(JdbcTemplateV1Config.class)
+//@Import(JdbcTemplateV2Config.class)
+@Import(JdbcTemplateV3Config.class)
+@SpringBootApplication(scanBasePackages = "hello.itemservice.web")
+public class ItemServiceApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(ItemServiceApplication.class, args);
+    }
+  
+    @Bean
+    @Profile("local")
+    public TestDataInit testDataInit(ItemRepository itemRepository) {
+        return new TestDataInit(itemRepository);
+    }
+  
+/*
+    @Bean
+    @Profile("test")
+    public DataSource dataSource() {
+        log.info("메모리 데이터베이스 초기화");
+        DriverManagerDataSource dataSource = new DriverManagerDataSource();
+        dataSource.setDriverClassName("org.h2.Driver");
+        dataSource.setUrl("jdbc:h2:mem:db;DB_CLOSE_DELAY=-1");
+        dataSource.setUsername("sa");
+        dataSource.setPassword("");
+        return dataSource;
+    }
+*/
+}
+```
+
+그리고 테스트에서 데이터베이스에 접근하는 설정 정보도 주석처리합시다. 
+
+### **test - application.properties**
+
+`src/test/resources/application.properties`
+
+```java
+spring.profiles.active=test
+#spring.datasource.url=jdbc:h2:tcp://localhost/~/testcase
+#spring.datasource.username=sa
+
+#jdbcTemplate sql log
+logging.level.org.springframework.jdbc=debug
+```
+
+`spring.datasource.url`, `spring.datasource.username`를 사용하지 않도록 `#`을 사용해서 주석처리합시다.
+
+이렇게 하면 데이터베이스에 접근하는 모든 설정 정보가 사라집니다. 이렇게 별다른 정보가 없으면 스프링 부트는 임베디드 모드로 접근하는 데이터소스(`DataSource`)를 만들어서 제공합니다.
+
+### **실행**
+
+`ItemRepositoryTest`를 실행해보면 테스트가 정상 수행되는 것을 확인할 수 있습니다.
+
+참고로 로그를 보면 다음 부분을 확인할 수 있는데 `jdbc:h2:mem` 뒤에 임의의 데이터베이스 이름이 들어가 있습니다.
+
+이것은 혹시라도 여러 데이터소스가 사용될 때 같은 데이터베이스를 사용하면서 발생하는 충돌을 방지하기 위해 스프링 부트가 임의의 이름을 부여한 것입니다.
+
+```java
+conn0: url=jdbc:h2:mem:d8fb3a29-caf7-4b37-9b6c-b0eed9985454
+```
+
+임베디드 데이터베이스 이름을 스프링 부트가 기본으로 제공하는 `jdbc:h2:mem:testdb`로 고정하고 싶으면 `application.properties`에 다음 설정을 추가하면 됩니다.
+
+```java
+spring.datasource.generate-unique-name=false
+```
+
+> 참고 - 임베디드 데이터베이스에 대한 스프링 부트의 더 자세한 설정은 다음 공식 메뉴얼을 참고합시다.
+https://docs.spring.io/spring-boot/docs/current/reference/html/data.html#data.sql.datasource.embedded
+>
