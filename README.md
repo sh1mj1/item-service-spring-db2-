@@ -1135,3 +1135,134 @@ jdbcTemplate.update(
 JPA와 같은 ORM 기술을 사용하면서 동시에 SQL을 직접 작성해야 할 때가 있는데, 그때도 JdbcTemplate을 함께 사용하면 됩니다. 
 
 그런데 JdbcTemplate의 최대 단점이 있는데, 바로 동적 쿼리 문제를 해결하지 못한다는 점입니다. 그리고 SQL을 자바 코드로 작성하기 때문에 SQL 라인이 코드를 넘어갈 때 마다 문자 더하기를 해주어야 하는 단점도 있습니다.
+
+# ==== 2. 데이터 접근 기술 - 테스트 ====
+# 1. 테스트 - 데이터베이스 연동
+
+데이터 접근 기술을 개발할 때에는 실제 데이터베이스에 접근해서 데이터를 잘 저장하고 조회할 수 있는지 확인하는 것이 필요합니다.
+
+테스트를 실행할 때 실제 데이터베이스를 연동해서 진행 앞서 개발한 `ItemRepositoryTest`를 통해서 테스트를 진행하겠습니다.
+
+### **main - application.properties**
+
+`src/main/resources/application.properties`
+
+```java
+spring.profiles.active=local
+spring.datasource.url=jdbc:h2:tcp://localhost/~/test
+spring.datasource.username=sa
+
+logging.level.org.springframework.jdbc=debug
+```
+
+### **test - application.properties**
+
+`src/test/resources/application.properties`
+
+```java
+spring.profiles.active=test
+```
+
+테스트 케이스는 `src/test`에 있기 때문에, 실행하면 `src/test`에 있는 `application.properties` 파일이 우선순위를 가지고 실행됩니다. 그런데 테스트용 설정에는 `spring.datasource.url` 과 같은 데이터베이스 연결 설정이 없습니다.
+
+테스트 케이스에서도 데이터베이스에 접속할 수 있게 test의 `aplication.properties` 를 다음과 같이 수정합니다.
+
+**test - application.properties 수정** 
+
+`src/test/resources/application.properties`
+
+```java
+spring.profiles.active=test
+spring.datasource.url=jdbc:h2:tcp://localhost/~/test
+spring.datasource.username=sa
+
+logging.level.org.springframework.jdbc=debug
+```
+
+### **테스트 실행 - 로컬DB**
+
+**@SpringBootTest**
+
+```java
+@SpringBootTest
+class ItemRepositoryTest { ... }
+```
+
+`ItemRepositoryTest`는 `@SpringBootTest`를 사용합니다. 
+
+`@SpringBootTest` 는 `@SpringBootApplication`를 찾아서 설정으로 사용합니다.
+
+**@SpringBootApplication**
+
+```java
+@Slf4j
+//@Import(MemoryConfig.class)
+//@Import(JdbcTemplateV1Config.class)
+//@Import(JdbcTemplateV2Config.class)
+@Import(JdbcTemplateV3Config.class)
+@SpringBootApplication(scanBasePackages = "hello.itemservice.web")
+public class ItemServiceApplication {}
+```
+
+`@SpringBootApplication` 설정이 과거에는 `MemoryConfig.class`를 사용하다가 이제는 `JdbcTemplateV3Config.class`를 사용하도록 변경되었습니다. 따라서 테스트도 `JdbcTemplate`을 통해 실제 데이터베이스를 호출합니다.
+
+- `MemoryItemRepository` → `JdbcTemplateItemRepositoryV3`
+
+### **실행 결과**
+
+`updateitem()`: 성공
+
+`save()`: 성공
+
+`findItems()`: 실패
+
+`findItems()`는 다음과 같은 오류를 내면서 실패
+
+```java
+java.lang.AssertionError:
+Expecting actual:
+  [Item(id=7, itemName=ItemTest, price=10000, quantity=10),
+    Item(id=8, itemName=itemA, price=10000, quantity=10),
+    Item(id=9, itemName=itemB, price=20000, quantity=20),
+    Item(id=10, itemName=itemA, price=10000, quantity=10),
+...
+```
+
+`findItems()` 코드를 확인해보면 상품을 3개 저장하고, 조회하는 동작입니다.
+
+`ItemRepositoryTest.findItems()`
+
+```java
+@Test
+void findItems() {
+    //given
+    Item item1 = new Item("itemA-1", 10000, 10);
+    Item item2 = new Item("itemA-2", 20000, 20);
+    Item item3 = new Item("itemB-1", 30000, 30);
+  
+    itemRepository.save(item1);
+    itemRepository.save(item2);
+    itemRepository.save(item3);
+  
+    //여기서 3개 이상이 조회되는 문제가 발생
+    test(null, null, item1, item2, item3);
+}
+```
+
+결과적으로 테스트에서 저정한 3개의 데이터가 조회되어야 하는데, 기대보다 더 많은 데이터가 조회됩니다.
+
+**실패 원인**
+
+테스트를 실행할 때 `TestDataInit`이 실행되어서 실패한 것일까요? 
+
+이 문제는 아닙니다. `TestDataInit`은 프로필이 `local`일 때만 동작하는데, 테스트 케이스를 실행할 때는 프로필이 `spring.profiles.active=test`이기 때문에 초기화 데이터가 추가되지 않습니다.
+
+문제는 H2 데이터베이스에 이미 과거에 서버를 실행하면서 저장했던 데이터가 보관되어 있기 때문입니다. 이 데이터가 현재 테스트에 영향을 줍니다.
+
+### **H2 데이터베이스 데이터 확인**
+
+http://localhost:8082
+
+`SELECT * FROM ITEM`을 실행하면 이미 서버를 실행해서 확인 할 때의 데이터가 저장되어 있는 것을 확인할 수 있습니다.
+
+![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/f240921e-85b9-4282-8dad-4725ff2b4513/Untitled.png)
