@@ -303,3 +303,44 @@ and price <= ?
 그리고 각 상황에 맞추어 파라미터도 생성해야 합니다. 물론 실무에서는 이보다 훨씬 더 복잡한 동적 쿼리들이 사용됩니다.
 
 
+# 5. JdbcTemplate - 이름 지정 파라미터 1
+
+### **순서대로 바인딩**
+
+JdbcTemplate을 기본으로 사용하면 파라미터를 순서대로 바인딩합니다.
+
+```java
+String sql = "update item set item_name=?, price=?, quantity=? where id=?";
+template.update(sql,
+                itemName,
+                price,
+                quantity,
+                itemId);
+```
+
+여기서는 `itemName`, `price`, `quantity`가 SQL에 있는 `?`에 순서대로 바인딩하고 있습니다. 
+
+따라서 순서만 잘 지키면 문제가 될 것은 없으나 문제는 변경시점에 발생 누군가 다음과 같이 SQL 코드의 순서를 변경했다고 가정합시다. (`price`와 `quantity`의 순서를 변경)
+
+```java
+String sql = "update item set item_name=?, quantity=?, price=? where id=?";
+template.update(sql,
+                itemName,
+                price,
+                quantity,
+                itemId);
+```
+
+이렇게 되면 다음과 같은 순서로 데이터가 바인딩됩니다.
+
+```java
+item_name=itemName, quantity=price, price=quantity
+```
+
+결과적으로 `price`와 `quantity`가 바뀌는 매우 심각한 문제가 발생합니다. 이럴 일이 없을 것 같지만, 실무에서는 파라미터가 10~20개가 넘어가는 일도 아주 많습니다. 그래서 미래에 필드를 추가하거나 수정하면서 이런 문제가 충분히 발생할 수 있습니다.
+
+버그 중에서 가장 고치기 힘든 버그는 데이터베이스에 데이터가 잘못 들어가는 버그입니다. 이것은 코드만 고치는 수준이 아니라 데이터베이스의 데이터를 복구해야 하기 때문에 버그를 해결하는데 들어가는 리소스가 굉장히 많습니다.
+
+**개발을 할 때는 코드를 몇줄 줄이는 편리함도 중요하지만, 모호함을 제거해서 코드를 명확하게 만드는 것이 유지보수 관점에서 매우 중요합니다.**
+
+이처럼 파라미터를 순서대로 바인딩 하는 것은 편리하기는 하지만, 순서가 맞지 않아서 버그가 발생할 수도 있으므로 주의해서 사용해야 합니다.
