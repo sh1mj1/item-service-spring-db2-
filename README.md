@@ -1877,3 +1877,116 @@ MyBatis는 기능도 단순하고 또 공식 사이트가 한글로 잘 번역�
 > 
 > 공식 사이트 https://mybatis.org/mybatis-3/ko/index.html
 >
+
+# 2. MyBatis 설정
+
+`mybatis-spring-boot-starter` 라이브러리를 사용하면 MyBatis 를 스프링과 통합하고, 설정도 아주 간단히 할 수 있습니다.
+
+`build.gradle`에 다음 의존 관계를 추가합시다.
+
+```groovy
+//MyBatis 추가
+implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:2.2.0'
+```
+
+참고로 뒤에 버전 정보가 붙는 이유는 스프링 부트가 버전을 관리해주는 공식 라이브러리가 아니기 때문입니다. 
+
+만약 스프링 부트가 버전을 관리해주는 경우에는 버전 정보를 붙이지 않아도 최적의 버전을 자동으로 찾아줍니다.
+
+**build.gradle - 의존관계 전체**
+
+```groovy
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    
+    //JdbcTemplate 추가
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    //MyBatis 추가
+    implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:2.2.0'
+    
+    //H2 데이터베이스 추가
+    runtimeOnly 'com.h2database:h2'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    
+    //테스트에서 lombok 사용
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+}
+```
+
+다음과 같은 라이브러리가 추가될 수 있습니다.
+
+- `mybatis-spring-boot-starter`: MyBatis 를 스프링 부트에서 편리하게 사용할 수 있게 시작하는 라이브러리입니다.
+- `mybatis-spring-boot-autoconfigure`: MyBatis 와 스프링 부트 설정 라이브러리입니다.
+- `mybatis-spring`: MyBatis와 스프링을 연동하는 라이브러리
+- `mybatis`: MyBatis 라이브러리
+
+**설정** 
+
+`application.properties`에 다음 설정을 추가합시다. `#MyBatis`를 참고
+
+> **주의 -** 웹 애플리케이션을 실행하는 `main` 과 테스트를 실행하는 `test` 각각의 위치의 `application.properties`를 모두 수정해주어야 합니다.
+> 
+
+**main - application.properties**
+
+```groovy
+spring.profiles.active=local
+spring.datasource.url=jdbc:h2:tcp://localhost/~/test
+spring.datasource.username=sa
+
+logging.level.org.springframework.jdbc=debug
+
+#MyBatis
+mybatis.type-aliases-package=hello.itemservice.domain
+mybatis.configuration.map-underscore-to-camel-case=true
+logging.level.hello.itemservice.repository.mybatis=trace
+```
+
+**test - application.properties**
+
+```groovy
+spring.profiles.active=test
+#spring.datasource.url=jdbc:h2:tcp://localhost/~/testcase
+#spring.datasource.username=sa
+
+logging.level.org.springframework.jdbc=debug
+
+#MyBatis
+mybatis.type-aliases-package=hello.itemservice.domain
+mybatis.configuration.map-underscore-to-camel-case=true
+logging.level.hello.itemservice.repository.mybatis=trace
+```
+
+`mybatis.type-aliases-package`
+
+- MyBatis 에서 타입 정보를 사용할 때는 패키지 이름을 적어주어야 하는데, 여기에 명시하면 패키지 이름을 생략할 수 있습니다.
+- 지정한 패키지와 그 하위 패키지가 자동으로 인식됩니다.
+- 여러 위치를 지정하려면 `,`, `;`로 구분하면 됩니다.
+
+`mybatis.configuration.map-underscore-to-camel-case`
+
+- JdbcTemplate 의 `BeanPropertyRowMapper`에서 처럼 언더바를 카멜로 자동 변경해주는 기능을 활성화시키는 설정입니다. 바로 다음에 설명하는 관례의 불일치 내용에서 자세히 설명합니다.
+
+`logging.level.hello.itemservice.repository.mybatis=trace`
+
+- MyBatis 에서 실행되는 쿼리 로그를 확인할 수 있습니다.
+
+### **관례의 불일치**
+
+자바 객체에는 주로 카멜(`camelCase`) 표기법을 사용합니다.
+
+반면에 관계형 데이터베이스에서는 주로 언더스코어를 사용하는 `snake_case`표기법을 사용합니다. 
+
+이렇게 관례로 많이 사용하다 보니 `map-underscore-to-camel-case` 기능을 활성화 하면 언더스코어 표기법을 카멜로 자동 변환합니다. 따라서 DB에서 `select item_name`으로 조회해도 객체의 `itemName`( `setItemName()`) 속성에 값이 정상 입력됩니다. 
+
+정리하면 해당 옵션을 켜면 `snake_case`는 자동으로 해결되니 그냥 두면 되고, 컬럼 이름과 객체 이름이 완전히 다른 경우에는 조회 SQL에서 별칭을 사용하면 됩니다.
+
+**예)**
+
+- DB `select item_name`
+- 객체 `name`
+- 별칭을 통한 해결방안: `select item_name as name`
