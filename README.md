@@ -1355,3 +1355,88 @@ spring.datasource.username=sa
 - 테스트는 반복해서 실행할 수 있어야 함
 
 물론 테스트가 끝날 때 마다 추가한 데이터에 `DELETE SQL`을 사용해도 되겠지만, 이 방법도 궁극적인 해결책은 아닙니다. 만약 테스트 과정에서 데이터를 이미 추가했는데, 테스트가 실행되는 도중에 예외가 발생하거나 애플리케이션이 종료되어 버려서 테스트 종료 시점에 `DELETE SQL`을 호출하지 못할 수도 있습니다. 그렇게 되면 다른 테스트와 격리되지 않습니다.
+
+# 3. 테스트 - 데이터 롤백
+
+### **트랜잭션과 롤백 전략**
+
+테스트가 끝나고 나서 트랜잭션을 강제로 롤백해버리면 데이터가 깔끔하게 제거됩니다. 
+
+테스트를 하면서 데이터를 이미 저장했는데, 중간에 테스트가 실패해서 롤백을 호출하지 못해도 괜찮습니다.
+
+트랜잭션을 커밋하지 않았기 때문에 데이터베이스에 해당 데이터가 반영되지 않습니다. 이렇게 트랜잭션을 활용하면 테스트가 끝나고 나서 데이터를 깔끔하게 원래 상태로 되돌릴 수 있습니다.
+
+예를 들어서 다음 순서와 같이 각각의 테스트 실행 직전에 트랜잭션을 시작하고, 각각의 테스트 실행 직후에 트랜잭션을 롤백해야 합니다. 그래야 다음 테스트에 데이터로 인한 영향을 주지 않습니다.
+
+```sql
+1. 트랜잭션 시작
+2. 테스트 A 실행
+3. 트랜잭션 롤백
+
+4. 트랜잭션 시작
+5. 테스트 B 실행
+6. 트랜잭션 롤백
+```
+
+테스트는 각각의 테스트 실행 전 후로 동작하는 `@BeforeEach`, `@AfterEach`라는 편리한 기능을 제공합니다.
+
+**테스트에 직접 트랜잭션 추가**
+
+```java
+@SpringBootTest
+class ItemRepositoryTest {
+  
+    @Autowired
+    ItemRepository itemRepository;
+  
+    //트랜잭션 관련 코드
+    @Autowired
+    PlatformTransactionManager transactionManager;
+    TransactionStatus status;
+  
+    @BeforeEach
+    void beforeEach() {
+        //트랜잭션 시작
+        status = transactionManager.getTransaction(new DefaultTransactionDefinition());
+    }
+  
+    @AfterEach
+    void afterEach() {
+        //MemoryItemRepository 의 경우 제한적으로 사용
+        if (itemRepository instanceof MemoryItemRepository) {
+            ((MemoryItemRepository) itemRepository).clearStore();
+        }
+        //트랜잭션 롤백
+        transactionManager.rollback(status);
+    }
+    //...
+}
+```
+
+트랜잭션 관리자는 `PlatformTransactionManager`를 주입 받아서 사용합니다. 참고로 스프링 부트는 자동으로 적절한 트랜잭션 매니저를 스프링 빈으로 등록합니다.
+
+`@BeforeEach`: 각각의 테스트 케이스를 실행하기 직전에 호출됩니다. 따라서 여기서 트랜잭션을 시작하면 각각의 테스트를 트랜잭션 범위 안에서 실행할 수 있습니다.
+
+- `transactionManager.getTransaction(new DefaultTransactionDefinition())`로 트랜잭션을 시작합니다.
+
+`@AfterEach`: 각각의 테스트 케이스가 완료된 직후에 호출됩니다. 따라서 여기서 트랜잭션을 롤백하면 데이터를 트랜잭션 실행 전 상태로 복구할 수 있습니다.
+
+- `transactionManager.rollback(status)`로 트랜잭션을 롤백합니다.
+
+테스트를 실행하기 전에 먼저 테스트에 영향을 주지 않도록 `testcase` 데이터베이스에 접근해서 기존 데이터를 깔끔하게 삭제합니다
+
+**모든 ITEM 데이터 삭제** 
+
+```sql
+delete from item
+```
+
+**데이터가 모두 삭제되었는지 확인**
+
+```sql
+SELECT * FROM ITEM
+```
+
+**ItemRepositoryTest 실행** 
+
+이제 `ItemRepositoryTest`의 테스트를 여러번 반복해서 실행해도 테스트가 성공하는 것을 확인할 수 있습니다.
