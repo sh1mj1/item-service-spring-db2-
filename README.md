@@ -794,3 +794,183 @@ public class ItemServiceApplication {
 - `@Import(JdbcTemplateV1Config.class)` → `@Import(JdbcTemplateV2Config.class)`
 
 이후에 실행해보면 모두 정상적으로 실행되는 것을 확인할 수 있습니다.
+
+# 7. JdbcTemplate - SimpleJdbcInsert
+
+JdbcTemplate은 INSERT SQL를 직접 작성하지 않아도 되도록 `SimpleJdbcInsert`라는 편리한 기능을 제공합니다.
+
+`JdbcTemplateItemRepositoryV3`
+
+```java
+/**
+* SimpleJdbcInsert
+*/
+@Slf4j
+@Repository
+public class JdbcTemplateItemRepositoryV3 implements ItemRepository {
+  
+    private final NamedParameterJdbcTemplate template;
+    private final SimpleJdbcInsert jdbcInsert;
+  
+    public JdbcTemplateItemRepositoryV3(DataSource dataSource) {
+        this.template = new NamedParameterJdbcTemplate(dataSource);
+        this.jdbcInsert = new SimpleJdbcInsert(dataSource)
+          .withTableName("item")
+          .usingGeneratedKeyColumns("id");
+      // .usingColumns("item_name", "price", "quantity"); //생략 가능
+    }
+  
+    @Override
+    public Item save(Item item) {
+        SqlParameterSource param = new BeanPropertySqlParameterSource(item);
+        Number key = jdbcInsert.executeAndReturnKey(param);
+        item.setId(key.longValue());
+        return item;
+    }
+    @Override
+    public void update(Long itemId, ItemUpdateDto updateParam) {
+        String sql = "update item " +
+        "set item_name=:itemName, price=:price, quantity=:quantity " +
+        "where id=:id";
+      
+        SqlParameterSource param = new MapSqlParameterSource()
+          .addValue("itemName", updateParam.getItemName())
+          .addValue("price", updateParam.getPrice())
+          .addValue("quantity", updateParam.getQuantity())
+          .addValue("id", itemId);
+        template.update(sql, param);
+    }
+  
+    @Override
+    public Optional<Item> findById(Long id) {
+        String sql = "select id, item_name, price, quantity from item where id = :id";
+        try {
+            Map<String, Object> param = Map.of("id", id);
+            Item item = template.queryForObject(sql, param, itemRowMapper());
+            return Optional.of(item);
+        } catch (EmptyResultDataAccessException e) {
+            return Optional.empty();
+        }
+    }
+  
+    @Override
+    public List<Item> findAll(ItemSearchCond cond) {
+      
+        Integer maxPrice = cond.getMaxPrice();
+        String itemName = cond.getItemName();
+      
+        SqlParameterSource param = new BeanPropertySqlParameterSource(cond);
+        String sql = "select id, item_name, price, quantity from item";
+        //동적 쿼리
+        if (StringUtils.hasText(itemName) || maxPrice != null) {
+            sql += " where";
+        }
+      
+        boolean andFlag = false;
+        if (StringUtils.hasText(itemName)) {
+            sql += " item_name like concat('%',:itemName,'%')";
+            andFlag = true;
+        }
+      
+        if (maxPrice != null) {
+            if (andFlag) {
+                sql += " and";
+            }
+            sql += " price <= :maxPrice";
+        }
+        log.info("sql={}", sql);
+        return template.query(sql, param, itemRowMapper());
+    }
+  
+    private RowMapper<Item> itemRowMapper() {
+        return BeanPropertyRowMapper.newInstance(Item.class);
+    }
+}
+```
+
+### **기본**
+
+`JdbcTemplateItemRepositoryV3`은 `ItemRepository` 인터페이스를 구현합니다.
+
+`this.jdbcInsert = new SimpleJdbcInsert(dataSource)`
+
+- 생성자를 보면 의존관계 주입은 `dataSource`를 받고 내부에서 `SimpleJdbcInsert`을 생성해서 가지고 있습니다. 스프링에서는 `JdbcTemplate` 관련 기능을 사용할 때 관례상 이 방법을 많이 사용합니다.
+- 물론 `SimpleJdbcInsert` 을 스프링 빈으로 직접 등록하고 주입받아도 됩니다.
+
+`SimpleJdbcInsert`
+
+```java
+this.jdbcInsert = new SimpleJdbcInsert(dataSource)
+  .withTableName("item")
+  .usingGeneratedKeyColumns("id");
+// .usingColumns("item_name", "price", "quantity"); //생략 가능
+```
+
+`withTableName`: 데이터를 저장할 테이블 명을 지정.
+
+`usingGeneratedKeyColumns`: key 를 생성하는 PK 컬럼 명을 지정.
+
+`usingColumns`: INSERT SQL에 사용할 컬럼을 지정. 특정 값만 저장하고 싶을 때 사용하며 생략 가능함.
+
+`SimpleJdbcInsert`는 생성 시점에 데이터베이스 테이블의 메타 데이터를 조회하므로 어떤 컬럼이 있는지 확인 할 수 있습니다. 그래서 `usingColumns`을 생략할 수 있습니다. 
+
+만약 특정 컬럼만 지정해서 저장하고 싶다면 `usingColumns`를 사용하면 됩니다.
+
+애플리케이션을 실행해보면 `SimpleJdbcInsert`이 어떤 INSERT SQL을 만들어서 사용하는지 로그로 확인할 수 있음
+
+```java
+DEBUG 39424 --- [ main] o.s.jdbc.core.simple.SimpleJdbcInsert :
+Compiled insert object: insert string is [INSERT INTO item (ITEM_NAME, PRICE, QUANTITY) VALUES(?, ?, ?)]
+```
+
+`save()` 
+
+`jdbcInsert.executeAndReturnKey(param)`을 사용해서 INSERT SQL을 실행하고, 생성된 키 값도 매우 편리하게 조회할 수 있습니다.
+
+```java
+public Item save(Item item) {
+    SqlParameterSource param = new BeanPropertySqlParameterSource(item);
+    Number key = jdbcInsert.executeAndReturnKey(param);
+    item.setId(key.longValue());
+    return item;
+}
+```
+
+`JdbcTemplateV3Config`
+
+```java
+@Configuration
+@RequiredArgsConstructor
+public class JdbcTemplateV3Config {
+  
+    private final DataSource dataSource;
+  
+    @Bean
+    public ItemService itemService() {
+        return new ItemServiceV1(itemRepository());
+    }
+  
+    @Bean
+    public ItemRepository itemRepository() {
+        return new JdbcTemplateItemRepositoryV3(dataSource);
+    }
+}
+```
+
+`JdbcTemplateItemRepositoryV3`를 사용하도록 스프링 빈에 등록합니다.
+
+`ItemServiceApplication` - 변경
+
+```java
+@Slf4j
+//@Import(MemoryConfig.class)
+//@Import(JdbcTemplateV1Config.class)
+//@Import(JdbcTemplateV2Config.class)
+@Import(JdbcTemplateV3Config.class)
+@SpringBootApplication(scanBasePackages = "hello.itemservice.web")
+public class ItemServiceApplication {}
+```
+
+`JdbcTemplateV3Config.class` 를 설정으로 사용하도록 변경
+
+- `@Import(JdbcTemplateV2Config.class)` → `@Import(JdbcTemplateV3Config.class)`
