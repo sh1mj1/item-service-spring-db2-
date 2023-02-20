@@ -2204,3 +2204,93 @@ Mybatis는 `<where>`, `<if>` 같은 동적 쿼리 문법을 통해 편리한 
 ```
 
 특수문자와 CDATA 각각 상황에 따른 장단점이 있으므로 원하는 방법을 그때그때 선택하면 됩니다.
+
+# 4. MyBatis 적용2 - 설정과 실행
+
+`MyBatisItemRepository`
+
+```java
+@Repository
+@RequiredArgsConstructor
+public class MyBatisItemRepository implements ItemRepository {
+  
+    private final ItemMapper itemMapper;
+  
+    @Override
+    public Item save(Item item) {
+        itemMapper.save(item);
+        return item;
+    }
+  
+    @Override
+    public void update(Long itemId, ItemUpdateDto updateParam) {
+        itemMapper.update(itemId, updateParam);
+    }
+  
+    @Override
+    public Optional<Item> findById(Long id) {
+        return itemMapper.findById(id);
+    }
+  
+    @Override
+    public List<Item> findAll(ItemSearchCond cond) {
+        return itemMapper.findAll(cond);
+    }
+}
+```
+
+`ItemRepository`를 구현해서 `MyBatisItemRepository`를 개발하겠습니다.
+
+`MyBatisItemRepository`는 단순히 `ItemMapper`에 기능을 위임하였습니다.
+
+`MyBatisConfig`
+
+```java
+@Configuration
+@RequiredArgsConstructor
+public class MyBatisConfig {
+  
+    private final ItemMapper itemMapper;
+  
+    @Bean
+    public ItemService itemService() {
+        return new ItemServiceV1(itemRepository());
+    }
+  
+    @Bean
+    public ItemRepository itemRepository() {
+        return new MyBatisItemRepository(itemMapper);
+    }
+}
+```
+
+`MyBatisConfig`는 `ItemMapper`를 주입받고, 필요한 의존관계를 생성합니다.
+
+`ItemServiceApplication` - 변경
+
+```java
+@Slf4j
+//@Import(MemoryConfig.class)
+//@Import(JdbcTemplateV1Config.class)
+//@Import(JdbcTemplateV2Config.class)
+//@Import(JdbcTemplateV3Config.class)
+@Import(MyBatisConfig.class)
+@SpringBootApplication(scanBasePackages = "hello.itemservice.web")
+public class ItemServiceApplication {}
+```
+
+`@Import(MyBatisConfig.class)`: 앞서 설정한 `MyBatisConfig.class`를 사용하도록 설정했습니다.
+
+### **테스트 실행**
+
+`ItemRepositoryTest`를 통해서 리포지토리가 정상 동작하는지 확인해봅시다. 테스트가 모두 성공해야 합니다.
+
+### **애플리케이션 실행**
+
+`ItemServiceApplication`를 실행해서 애플리케이션이 정상 동작하는지 확인해봅시다.
+
+![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/9a15d6d7-3957-48ff-a36b-bc5447faee8e/Untitled.png)
+
+> **주의 -** H2 데이터베이스 서버를 먼저 실행해야 함
+> 
+
