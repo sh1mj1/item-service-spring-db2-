@@ -2971,3 +2971,207 @@ logging.level.org.hibernate.type.descriptor.sql.BasicBinder=TRACE
 
 - `org.hibernate.SQL=DEBUG`: 하이버네이트가 생성하고 실행하는 SQL을 로그 메시지로 확인할 수 있습니다.
 - `org.hibernate.type.descriptor.sql.BasicBinder=TRACE`: SQL에 바인딩 되는 파라미터를 확인할 수 있습니다.
+
+# 5. JPA 적용 1 - 개발
+
+JPA에서 가장 중요한 부분은 객체와 테이블을 매핑하는 것입니다. 
+
+JPA가 제공하는 애노테이션을 사용해서 `Item` 객체와 테이블을 매핑해줍니다.
+
+`Item` - ORM 매핑
+
+```java
+import lombok.Data;
+
+import javax.persistence.*;
+
+@Data
+@Entity
+public class Item {
+  
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+  
+    @Column(name = "item_name", length = 10)
+    private String itemName;
+    private Integer price;
+    private Integer quantity;
+  
+    public Item() {
+    }
+  
+    public Item(String itemName, Integer price, Integer quantity) {
+        this.itemName = itemName;
+        this.price = price;
+        this.quantity = quantity;
+    }
+}
+```
+
+`@Entity`: JPA가 사용하는 객체라는 의미로 이 에노테이션이 있어야 JPA가 인식할 수 있습니다. 이렇게 `@Entity`가 붙은 객체를 JPA에서는 엔티티라고 합니다.
+
+`@Id`: 테이블의 PK와 해당 필드를 매핑합니다.
+
+`@GeneratedValue(strategy = GenerationType.IDENTITY)`: PK 생성 값을 데이터베이스에서 생성하는 `IDENTITY` 방식을 사용합니다. 
+예) MySQL auto increment
+
+`@Column`: 객체의 필드를 테이블의 컬럼과 매핑합니다.
+
+- `name = "item_name"`: 객체는 `itemName`이지만 테이블의 컬럼은 `item_name`이므로 이렇게 매핑됩니다.
+- `length = 10`: JPA의 매핑 정보로 DDL(`create table`)도 생성할 수 있는데, 그때 컬럼의 길이 값으로 활용합니다. (`varchar 10`)
+
+`@Column`을 생략할 경우 필드의 이름을 테이블 컬럼 이름으로 사용합니다. 참고로 지금처럼 스프링 부트와 통합해서 사용하면 필드 이름을 테이블 컬럼 명으로 변경할 때 객체 필드의 카멜 케이스를 테이블 컬럼의 언더스코어로 자동으로 변환합니다.
+
+- `itemName` → `item_name`, 따라서 위 예제의 `@Column(name = "item_name")`를 생략해도 됩니다.
+
+JPA는 `public` 또는 `protected`의 기본 생성자가 필수입니다.
+
+`public Item() {}`
+
+`JpaItemRepositoryV1`
+
+```java
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+import javax.persistence.EntityManager;
+import javax.persistence.TypedQuery;
+
+@Slf4j
+@Repository
+@Transactional
+public class JpaItemRepositoryV1 implements ItemRepository {
+  
+    private final EntityManager em;
+  
+    public JpaItemRepositoryV1(EntityManager em) {
+        this.em = em;
+    }
+  
+    @Override
+    public Item save(Item item) {
+        em.persist(item);
+        return item;
+    }
+  
+    @Override
+    public void update(Long itemId, ItemUpdateDto updateParam) {
+        Item findItem = em.find(Item.class, itemId);
+        findItem.setItemName(updateParam.getItemName());
+        findItem.setPrice(updateParam.getPrice());
+        findItem.setQuantity(updateParam.getQuantity());
+    }
+  
+    @Override
+    public Optional<Item> findById(Long id) {
+        Item item = em.find(Item.class, id);
+        return Optional.ofNullable(item);
+    }
+  
+    @Override
+    public List<Item> findAll(ItemSearchCond cond) {
+        String jpql = "select i from Item i";
+      
+        Integer maxPrice = cond.getMaxPrice();
+        String itemName = cond.getItemName();
+      
+        if (StringUtils.hasText(itemName) || maxPrice != null) {
+            jpql += " where";
+        }
+      
+        boolean andFlag = false;
+        List<Object> param = new ArrayList<>();
+        if (StringUtils.hasText(itemName)) {
+            jpql += " i.itemName like concat('%',:itemName,'%')";
+            param.add(itemName);
+            andFlag = true;
+        }
+      
+        if (maxPrice != null) {
+            if (andFlag) {
+                jpql += " and";
+            }
+            jpql += " i.price <= :maxPrice";
+            param.add(maxPrice);
+        }
+      
+        log.info("jpql={}", jpql);
+      
+        TypedQuery<Item> query = em.createQuery(jpql, Item.class);
+        if (StringUtils.hasText(itemName)) {
+            query.setParameter("itemName", itemName);
+        }
+      
+        if (maxPrice != null) {
+            query.setParameter("maxPrice", maxPrice);
+        }
+        return query.getResultList();
+    }
+}
+```
+
+`private final EntityManager em`: 생성자를 보면 스프링을 통해 엔티티 매니저(`EntityManager`) 라는 것을 주입받은 것을 확인할 수 있습니다. 
+
+JPA의 모든 동작은 엔티티 매니저를 통해서 이루어집니다. 엔티티 매니저는 내부에 **데이터소스**를 가지고 있고, **데이터베이스에 접근**할 수 있습니다.
+
+`@Transactional`: JPA의 모든 데이터 변경(등록, 수정, 삭제)은 트랜잭션 안에서 이루어져야 합니다. 
+
+조회는 트랜잭션이 없어도 가능합니다. 
+
+변경의 경우 일반적으로 서비스 계층에서 트랜잭션을 시작하기 때문에 문제가 없습니다. 
+
+하지만 이번 예제에서는 복잡한 비즈니스 로직이 없어서 서비스 계층에서 트랜잭션을 걸지 않았습니다. JPA에서는 데이터 변경 시 트랜잭션이 필수이므로 리포지토리에 트랜잭션을 걸었습니다. 
+
+다시 한 번 강조하지만 **일반적으로는 비즈니스 로직을 시작하는 서비스 계층에 트랜잭션을 걸어주는 것이 맞습니다.**
+
+> 참고 - JPA를 설정하려면 `EntityManagerFactory`, JPA 트랜잭션 매니저(`JpaTransactionManager`), 데이터소스 등등 다양한 설정을 해야 하지만 스프링 부트는 이 과정을 모두 자동화 해줍니다. 
+스프링 부트의 자동 설정은 `JpaBaseConfiguration`를 참고합시다.
+> 
+
+`JpaConfig`
+
+```java
+@Configuration
+public class JpaConfig {
+  
+    private final EntityManager em;
+  
+    public JpaConfig(EntityManager em) {
+        this.em = em;
+    }
+  
+    @Bean
+    public ItemService itemService() {
+        return new ItemServiceV1(itemRepository());
+    }
+  
+    @Bean
+    public ItemRepository itemRepository() {
+        return new JpaItemRepositoryV1(em);
+    }
+}
+```
+
+`ItemServiceApplication` - 변경
+
+```java
+//@Import(MyBatisConfig.class)
+@Import(JpaConfig.class)
+@SpringBootApplication(scanBasePackages = "hello.itemservice.web")
+public class ItemServiceApplication {}
+```
+
+`JpaConfig`를 사용하도록 변경였습니다.
+
+**테스트 실행** 
+
+먼저 `ItemRepositoryTest`를 통해서 리포지토리가 정상 동작하는지 확인합시다. 테스트가 모두 성공해야 합니다.
+
+**애플리케이션 실행** 
+
+`ItemServiceApplication`를 실행해서 애플리케이션이 정상 동작하는지 확인합니다.
+
+정상적으로 동작하네요!
+
+![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/f75e3b46-a48e-40da-902d-cd700bc20172/Untitled.png)
