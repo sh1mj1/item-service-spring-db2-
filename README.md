@@ -3175,3 +3175,154 @@ public class ItemServiceApplication {}
 정상적으로 동작하네요!
 
 ![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/f75e3b46-a48e-40da-902d-cd700bc20172/Untitled.png)
+
+# 6. JPA 적용 2 - 리포지토리 분석
+
+`save()` - 저장
+
+```java
+public Item save(Item item) {
+    em.persist(item);
+    return item;
+}
+```
+
+`em.persist(item)`: JPA에서 객체를 테이블에 저장할 때는 엔티티 매니저가 제공하는 `persist()` 메서드를 사용합니다.
+
+**JPA가 만들어서 실행한 SQL**
+
+```sql
+insert into item (id, item_name, price, quantity) values (null, ?, ?, ?)
+		또는
+insert into item (id, item_name, price, quantity) values (default, ?, ?, ?)
+		또는
+insert into item (item_name, price, quantity) values (?, ?, ?)
+```
+
+JPA가 만들어서 실행한 SQL을 보면 id 에 값이 빠져있는 것을 확인할 수 있습니다. 
+
+PK 키 생성 전략을 `IDENTITY`로 사용했기 때문에 JPA가 이런 쿼리를 만들어서 실행한 것이지요. 
+
+물론 쿼리 실행 이후에 `Item` 객체의 `id` 필드에 데이터베이스가 생성한 PK값이 들어갑니다. (JPA가 INSERT SQL 실행 이후에 생성된 ID 결과를 받아서 넣어줍니다.)
+
+**PK 매핑 참고**
+
+```java
+@Entity
+public class Item {
+  
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+}
+```
+
+`update`() - 수정
+
+```java
+public void update(Long itemId, ItemUpdateDto updateParam) {
+    Item findItem = em.find(Item.class, itemId);
+    findItem.setItemName(updateParam.getItemName());
+    findItem.setPrice(updateParam.getPrice());
+    findItem.setQuantity(updateParam.getQuantity());
+}
+```
+
+**JPA가 만들어서 실행한 SQL**
+
+```sql
+update item set item_name=?, price=?, quantity=? where id=?
+```
+
+`em.update()` 같은 메서드를 전혀 호출하지 않았는데 UPDATE SQL이 실행됩니다.
+
+JPA는 트랜잭션이 커밋되는 시점에, 변경된 엔티티 객체가 있는지 확인을 하고 특정 엔티티 객체가 변경된 경우에는 UPDATE SQL을 실행해줍니다.
+
+JPA가 어떻게 변경된 엔티티 객체를 찾는지 명확하게 이해하려면 영속성 컨텍스트라는 JPA 내부 원리를 이해해야 합니다. 지금은 트랜잭션 커밋 시점에 JPA가 변경된 엔티티 객체를 찾아서 UPDATE SQL을 수행한다고 이해만 해둡시다.
+
+테스트의 경우 마지막에 트랜잭션이 롤백되기 때문에 JPA는 UPDATE SQL을 실행하지 않습니다. 테스트에서 UPDATE SQL을 확인하려면 `@Commit`을 붙이면 확인할 수 있습니다.
+
+`findById()` - 단일 조회
+
+```java
+public Optional<Item> findById(Long id) {
+    Item item = em.find(Item.class, id);
+    return Optional.ofNullable(item);
+}
+```
+
+JPA 에서 엔티티 객체를 PK를 기준으로 조회할 때는 `find()`를 사용하고 조회 타입과 PK 값을 주면 됩니다. 그러면 JPA가 다음과 같은 조회 SQL을 만들어서 실행하고 결과를 객체로 바로 변환해줍니다.
+
+**JPA가 만들어서 실행한 SQL**
+
+```sql
+select
+  item0_.id as id1_0_0_,
+  item0_.item_name as item_nam2_0_0_,
+  item0_.price as price3_0_0_,
+  item0_.quantity as quantity4_0_0_
+from item item0_
+where item0_.id=?
+```
+
+JPA(하이버네이트)가 만들어서 실행한 SQL은 별칭이 조금 복잡합니다. 조인이 발생하거나 복잡한 조건에서도 문제 없도록 기계적으로 만들다 보니 이런 결과가 나온 것일겁니다.
+
+`findAll` - 목록 조회
+
+```java
+public List<Item> findAll(ItemSearchCond cond) {
+    String jpql = "select i from Item i";
+    //동적 쿼리 생략
+    TypedQuery<Item> query = em.createQuery(jpql, Item.class);
+    return query.getResultList();
+}
+```
+
+### **JPQL**
+
+JPA는 JPQL(Java Persistence Query Language)이라는 객체지향 쿼리 언어를 제공합니다. 주로 여러 데이터를 복잡한 조건으로 조회할 때 사용합니다. 
+
+SQL이 테이블을 대상으로 한다면, JPQL은 엔티티 객체를 대상으로 SQL을 실행한다 생각하면 됩니다. 
+
+엔티티 객체를 대상으로 하기 때문에 `from` 다음에 `Item` 엔티티 객체 이름이 들어갑니다. 엔티티 객체와 속성의 대소문자는 구분해야 합니다. 
+
+JPQL은 SQL과 문법이 거의 비슷하기 때문에 개발자들이 쉽게 적응할 수 있습니다.
+
+결과적으로 JPQL을 실행하면 그 안에 포함된 엔티티 객체의 매핑 정보를 활용해서 SQL을 생성합니다.
+
+**실행된 JPQL**
+
+```sql
+select i from Item i
+where i.itemName like concat('%',:itemName,'%')
+  and i.price <= :maxPrice
+```
+
+**JPQL을 통해 실행된 SQL**
+
+```sql
+select
+  item0_.id as id1_0_,
+  item0_.item_name as item_nam2_0_,
+  item0_.price as price3_0_,
+  item0_.quantity as quantity4_0_
+from item item0_
+where (item0_.item_name like ('%'||?||'%'))
+  and item0_.price<=?
+```
+
+**파라미터**
+
+JPQL에서 파라미터는 다음과 같이 입력한다면 파라미터 바인딩은 그 아래처럼 사용됩니다.
+
+```sql
+where price <= :maxPrice
+⬇️
+query.setParameter("maxPrice", maxPrice)
+```
+
+- `where price <= :maxPrice`
+- `query.setParameter("maxPrice", maxPrice)`
+
+**동적 쿼리 문제** 
+
+실무에서는 동적 쿼리 문제 때문에, JPA 사용할 때 Querydsl 도 함께 선택합니다.
