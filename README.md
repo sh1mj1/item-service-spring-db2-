@@ -3326,3 +3326,57 @@ query.setParameter("maxPrice", maxPrice)
 **동적 쿼리 문제** 
 
 실무에서는 동적 쿼리 문제 때문에, JPA 사용할 때 Querydsl 도 함께 선택합니다.
+
+
+# 7. JPA 적용 3 - 예외 변환
+
+JPA의 경우 예외가 발생하면 **JPA 예외**가 발생합니다.
+
+```java
+@Repository
+@Transactional
+public class JpaItemRepositoryV1 implements ItemRepository {
+  
+    private final EntityManager em;
+  
+    @Override
+    public Item save(Item item) {
+        em.persist(item);
+        return item;
+    }
+}
+```
+
+`EntityManager`는 순수한 JPA 기술이고, 스프링과는 관계가 없습니다. 따라서 엔티티 매니저는 예외가 발생하면 JPA 관련 예외를 발생시킵니다.
+
+JPA는 `PersistenceException`과 그 하위 예외를 발생시킵니다.
+
+- 추가로 JPA는 `IllegalStateException`, `IllegalArgumentException`을 발생시킬 수 있습니다.
+
+### **예외 변환 전**
+
+![https://user-images.githubusercontent.com/52024566/188884085-d4b7e7d1-ca10-421d-8fd2-90053bb3b075.png](https://user-images.githubusercontent.com/52024566/188884085-d4b7e7d1-ca10-421d-8fd2-90053bb3b075.png)
+
+**@Repository의 기능**
+
+`@Repository`가 붙은 클래스는 컴포넌트 스캔의 대상입니다. 그리고 예외 변환 AOP 의 적용 대상이기도 합니다.
+
+스프링과 JPA를 함께 사용하는 경우 스프링은 JPA 예외 변환기 (`PersistenceExceptionTranslator`)를 등록합니다.
+
+예외 변환 AOP 프록시는 JPA 관련 예외가 발생하면 JPA 예외 변환기를 통해 발생한 예외를 **스프링 데이터 접근 예외로 변환**합니다.
+
+### **예외 변환 후**
+
+![https://user-images.githubusercontent.com/52024566/188884100-a19e92ca-c0f4-481f-9977-437643b83af5.png](https://user-images.githubusercontent.com/52024566/188884100-a19e92ca-c0f4-481f-9977-437643b83af5.png)
+
+결과적으로 리포지토리에 `@Repository` 애노테이션만 있으면 스프링이 예외 변환을 처리하는 AOP를 생성합니다.
+
+> 참고 - 스프링 부트는 `PersistenceExceptionTranslationPostProcessor`를 자동으로 등록하는데, 여기에서 `@Repository`를 AOP 프록시로 만드는 어드바이저가 등록됩니다.
+> 
+> 
+> 복잡한 과정을 거쳐서 실제 예외를 변환하는데, 실제 JPA 예외를 변환하는 코드는 아래와 같습니다.
+> 
+> ```java
+> EntityManagerFactoryUtils.convertJpaAccessExceptionIfPossible()
+> ```
+>
