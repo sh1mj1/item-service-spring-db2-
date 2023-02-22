@@ -3381,7 +3381,138 @@ JPA는 `PersistenceException`과 그 하위 예외를 발생시킵니다.
 > ```
 >
 
-# 4. 스프링 데이터 JPA 적용 1
+# 1. 스프링 데이터 JPA 소개1 - 등장 이유
+
+이제는 스프링 데이터 JPA 에 대해서 알아봅니다. 
+
+스프링 데이터 JPA 는 스프링 프레임워크에서 JPA을 한 단계 더 추상화시켜서 편리하게 사용할 수 있도록 지원하는 프로젝트(모듈)입니다. 
+
+Spring Data JPA의 목적은 JPA를 사용할 때 필수적으로 생성해야하나, **예상가능하고 반복적인 코드들을 대신 작성**해줘서 코드를 줄여주는 것입니다. 
+
+이는 JPA를 한 단계 추상화시킨 ****`JpaRepository`라는 인터페이스를 제공함으로써 이루어집니다.
+
+Spring Data JPA는 JPA Provider 가 아닙니다. 단지 데이터 계층에 접근하기 위해 필요한 뻔한 코드들의 사용을 줄여주도록 하는 인터페이스입니다다. 
+
+즉, 중요한 점은 **Spring Data JPA는 항상 하이버네이트와 같은 JPA provider가 필요하다**는 것입니다.
+
+# 2. 스프링 데이터 JPA 소개2 - 기능
+
+Spring Data JPA 는 CRUD 처리를 위한 공통 인터페이스 `JpaRepository`을 제공합니다. repository 개발 시 인터페이스만 작성하면 실행 시점에 스프링 데이터 JPA 가 알아서 구현 객체를 동적으로 생성해서 주입해줍니다.
+
+![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/0af778a1-de15-42f0-bd2d-b31f5ced17fe/Untitled.png)
+
+![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/1d816e79-1732-43be-8562-a6ed7abc72f9/Untitled.png)
+
+```java
+public interface ItemRepository extends JpaRepository<Member, Long> {}
+```
+
+하지만 단점도 있습니다. 일단 Spring Data JPA는 자세한 쿼리문을 작성하기 어려워집니다. 
+
+이 경우에는 JPA 나 JDBCTemplate 로 쿼리문을 작성하면 됩니다. 
+
+### **공통 인터페이스 기능**
+
+![https://user-images.githubusercontent.com/52024566/200572119-fbf39588-8ca8-4ee5-a044-f061ab1eae82.png](https://user-images.githubusercontent.com/52024566/200572119-fbf39588-8ca8-4ee5-a044-f061ab1eae82.png)
+
+`JpaRepository` 인터페이스를 통해서 기본적인 CRUD 기능을 제공합니다.
+
+공통화 가능한 기능이 거의 모두 포함되어 있습니다.
+
+`CrudRepository`에서의 `fineOne()` 이 `JpaRepository` 에서는(스프링 데이터 JPA 계층) `findById()`로 변경되는 것을 확인할 수 있습니다.
+
+**JpaRepository 사용법**
+
+```java
+public interface ItemRepository extends JpaRepository<Member, Long> {
+}
+```
+
+`JpaRepository` 인터페이스를 인터페이스 상속받고, 제네릭에 관리할 `<엔티티, 엔티티ID>`를 줍니다.
+
+그러면 `JpaRepository`가 제공하는 기본 CRUD 기능을 모두 사용할 수 있습니다.
+
+**스프링 데이터 JPA가 구현 클래스를 대신 생성**
+
+![https://user-images.githubusercontent.com/52024566/200572124-92a4dbd1-a6e8-4ed4-85a1-1cc15ca1423c.png](https://user-images.githubusercontent.com/52024566/200572124-92a4dbd1-a6e8-4ed4-85a1-1cc15ca1423c.png)
+
+`JpaRepository` 인터페이스만 상속받으면 스프링 데이터 JPA가 프록시 기술을 사용해서 구현 클래스를 생성합니다. 그리고 만든 구현 클래스의 인스턴스를 만들어서 스프링 빈으로 등록해줍니다.
+
+따라서 개발자는 구현 클래스 없이 인터페이스만 만들면 기본 CRUD 기능을 사용할 수 있습니다.
+
+### **쿼리 메서드 기능**
+
+스프링 데이터 JPA는 인터페이스에 메서드만 적어두면, 메서드 이름을 분석해서 쿼리를 자동으로 만들고 실행해주는 기능을 제공합니다.
+
+**순수 JPA 리포지토리**
+
+```java
+public List<Member> findByUsernameAndAgeGreaterThan(String username, int age) {
+    return em.createQuery("select m from Member m where m.username = :username and m.age > :age")
+      .setParameter("username", username)
+      .setParameter("age", age)
+      .getResultList();
+}
+```
+
+순수 JPA를 사용하면 직접 JPQL을 작성하고, 파라미터도 직접 바인딩 해야 해야 합니다. 사실 JPA 을 사용해도 굉장히 편리하긴 합니다. 하지만 스프링 데이터 JPA 을 사용한다면 훨씬 더 간단해집니다.
+
+**스프링 데이터 JPA**
+
+```java
+public interface MemberRepository extends JpaRepository<Member, Long> {
+    List<Member> findByUsernameAndAgeGreaterThan(String username, int age);
+}
+```
+
+스프링 데이터 JPA는 메서드 이름을 분석해서 필요한 JPQL을 만들고 실행합니다. 물론 JPQL은 JPA가 다시 SQL로 번역해서 실행하겠죠.
+
+이렇게 코드가 굉장히 간단해집니다.
+
+당연히 그냥 아무 이름이나 사용하는 것은 아니고 다음과 같은 규칙을 따라야 합니다!
+
+### **스프링 데이터 JPA가 제공하는 쿼리 메소드 기능**
+
+조회: `find…By`, `read…By`, `query…By`, `get…By`
+
+- 예:) `findHelloBy`처럼 …에 식별하기 위한 내용(설명)이 들어가도 됨
+- COUNT: `count…By` 반환타입은 `long`
+- EXISTS: `exists…By` 반환타입은 `boolean`
+
+삭제: `delete…By`, `remove…By` 반환타입 `long`
+
+- DISTINCT: `findDistinct`, `findMemberDistinctBy`
+- LIMIT: `findFirst3`, `findFirst`, `findTop`, `findTop3`
+
+> 쿼리 메소드 필터 조건은 스프링 데이터 JPA 공식 문서를 참고합시다. 
+
+https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#jpa.querymethods.query-creation https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#repositories.limitquery-result
+> 
+
+**JPQL 직접 사용하기**
+
+```java
+public interface SpringDataJpaItemRepository extends JpaRepository<Item, Long>
+{
+    //쿼리 메서드 기능
+    List<Item> findByItemNameLike(String itemName);
+    
+    //쿼리 직접 실행
+    @Query("select i from Item i where i.itemName like :itemName and i.price <= :price")
+    List<Item> findItems(@Param("itemName") String itemName, @Param("price") Integer price);
+}
+```
+
+쿼리 메서드 기능 대신에 직접 JPQL을 사용하고 싶을 때는 `@Query`와 함께 JPQL 을 작성합니다. 이때는 메서드 이름으로 실행하는 규칙은 무시합니다.
+
+참고로 스프링 데이터 JPA는 JPQL 뿐만 아니라 JPA의 네이티브 쿼리 기능도 지원하는데, JPQL 대신에 SQL을 직접 작성할 수 있습니다.
+
+> 중요 - 스프링 데이터 JPA는 JPA를 편리하게 사용하도록 도와주는 도구입니다. 따라서 JPA 자체를 잘 이해하는 것이 가장 중요합니다.
+> 
+
+다음 글에서는 직접 스프링 데이터 JPA 을 프로젝트에 적용해보도록 하겠습니다.
+
+# 4. 스프링 데이터 JPA 적용
 
 먼저 스프링 데이터 JPA 을 적용하기 전에 설정부터 해줍니다.
 
