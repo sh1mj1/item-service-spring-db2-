@@ -3789,3 +3789,260 @@ public class ItemServiceApplication {}
 > ext["hibernate.version"] = "5.6.5.Final"
 > ```
 >
+
+# ==== 6. 데이터 접근 기술 - Querydsl =====
+# 1. Querydsl 소개 1 - 기존 방식의 문제점
+
+### **기존 방식의 문제점**
+
+Querydsl 을 사용하기 전 JPA 을 사용했을 때의 문제점부터 정리해 봅시다.
+
+**QUERY의 문제점**
+
+QUERY는 문자이므로 **Type-check 가 불가능**합니다.
+
+또 **실행하기 전까지 작동여부를 확인할 수 없습니다.**
+
+JPA에서 QUERY 방법은 크게 3가지가 있었습니다.
+
+ **1. JPQL(HQL)**
+
+![https://user-images.githubusercontent.com/52024566/201093333-219026a4-5541-44f3-aad0-cb06d240992a.png](https://user-images.githubusercontent.com/52024566/201093333-219026a4-5541-44f3-aad0-cb06d240992a.png)
+
+장점
+
+- SQL QUERY와 비슷해서 금방 익숙해질 수 있습니다.
+
+단점
+
+- type-safe 가 아닙니다.
+- 동적쿼리 생성이 어렵습니다.
+
+ **2. Criteria API**
+
+Criteria API 는 자바 ORM 표준 프로그래밍에서 **JPQL 을 자바 코드로 작성할 수 있도록 도와주는 빌더 클래스 API** 을 의미합니다. 
+
+![https://user-images.githubusercontent.com/52024566/201093339-f1f17480-e8de-4075-b995-9c0099ddaabf.png](https://user-images.githubusercontent.com/52024566/201093339-f1f17480-e8de-4075-b995-9c0099ddaabf.png)
+
+`getCriteriaBuilder` 함수를 이용해서 Criteria Query Builder 을 생성하고 `createQuery` 함수로 CriteriaQuery 객체를 생성합니다.
+
+Member 엔티티 별칭 root 을 사용해서 20, 40세 사이이며 김으로 시작하는 Member 을 가져옵니다. 이후 정렬 및 최대 결과에 대한 제한을 걸며 결과를 만듭니다.
+
+장점
+
+- 동적쿼리 생성 가능
+
+단점
+
+- type-safe 아님
+- 너무 너무 너무 복잡함
+- 알아야 할 게 너무 많음
+
+ **3. MetaModel Criteria API(type-safe)**
+
+- `root.get("age")` → `root.get(Member_.age)`
+- Criteria API + MetaModel
+- Criteria API와 거의 동일
+- type-safe
+- 복잡하긴 마찬가지
+
+우리는 이러한 문제들을 Querydsl 로 해결할 수 있습니다.
+
+# 2. Querydsl 소개 2 - 해결
+
+### **DSL**
+
+DSL 은 **도메인(Domain) + 특화(Specific) + 언어(Language) 입니다.**
+
+특정한 도메인에 초점을 맞춘 제한적인 표현력을 가진 컴퓨터 프로그래밍 언어입니다.
+
+**단순**하고 **간결**하며 **유창**하다는 특징을 가집니다.
+
+### **QueryDSL**
+
+그렇다면 **QueryDSL 은 쿼리 + 도메인 + 특화 + 언어** 입니다.
+
+쿼리에 특화된 프로그래밍 언어이지요. 역시 **단순, 간결, 유창합니다.**
+
+다양한 저장소 쿼리 기능을 통합하고 있습니다. **JPA**, **MongoDB**, **SQL** 같은 기술들을 위해 **type-safe SQL**을 만드는 프레임워크입니다.
+
+### **데이터 쿼리 기능 추상화**
+
+![https://user-images.githubusercontent.com/52024566/201093340-676a0c16-9aa0-470c-9d4d-5c32922861e7.png](https://user-images.githubusercontent.com/52024566/201093340-676a0c16-9aa0-470c-9d4d-5c32922861e7.png)
+
+**Type-safe Query Type 생성**
+
+![https://user-images.githubusercontent.com/52024566/201093342-581cf921-db93-43a7-9c41-3c9a22ea8a5d.png](https://user-images.githubusercontent.com/52024566/201093342-581cf921-db93-43a7-9c41-3c9a22ea8a5d.png)
+
+**작동 방식**
+
+![https://user-images.githubusercontent.com/52024566/201093343-b2d7bc8f-7f3c-4ca1-9a7a-eb09f98cbb4f.png](https://user-images.githubusercontent.com/52024566/201093343-b2d7bc8f-7f3c-4ca1-9a7a-eb09f98cbb4f.png)
+
+**SpringDataJPA + Querydsl**
+
+SpringDataJPA 프로젝트의 약점은 조회에 있습니다.
+
+Querydsl 로 복잡한 조회 기능을 보완할 수 있습니다.
+
+또한 복잡한 쿼리와 동적 쿼리에 약점을 가지는 Spring Data JPA 에 QueryDSL 을 합치는 것은 매우 좋은 선택이 됩니다. 
+
+- 단순한 경우 : SpringDataJPA
+- 복잡한 경우 : Querydsl 직접 사용
+
+# 3. Querydsl 설정
+
+`build.gradle`
+
+Querydsl로 추가된 부분은 다음 두 부분입니다.
+
+```java
+dependencies {
+  //Querydsl 추가
+  implementation 'com.querydsl:querydsl-jpa'
+  annotationProcessor "com.querydsl:querydsl-apt:$
+  {dependencyManagement.importedProperties['querydsl.version']}:jpa"
+  annotationProcessor "jakarta.annotation:jakarta.annotation-api"
+  annotationProcessor "jakarta.persistence:jakarta.persistence-api"
+}
+
+//Querydsl 추가, 자동 생성된 Q클래스 gradle clean으로 제거
+clean {
+  delete file('src/main/generated')
+}
+```
+
+- 전체코드
+    
+    ```java
+    plugins {
+      id 'org.springframework.boot' version '2.6.5'
+      id 'io.spring.dependency-management' version '1.0.11.RELEASE'
+      id 'java'
+    }
+    
+    group = 'com.example'
+    version = '0.0.1-SNAPSHOT'
+    sourceCompatibility = '11'
+    
+    ext["hibernate.version"] = "5.6.5.Final"
+    
+    configurations {
+      compileOnly {
+        extendsFrom annotationProcessor
+      }
+    }
+    
+    repositories {
+      mavenCentral()
+    }
+    
+    dependencies {
+        implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+        implementation 'org.springframework.boot:spring-boot-starter-web'
+        
+        //JdbcTemplate 추가
+        //implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+        //MyBatis 추가
+        implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:2.2.0'
+        //JPA, 스프링 데이터 JPA 추가
+        implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+        
+        //Querydsl 추가
+        implementation 'com.querydsl:querydsl-jpa'
+        annotationProcessor "com.querydsl:querydsl-apt:${dependencyManagement.importedProperties['querydsl.version']}:jpa"
+        annotationProcessor "jakarta.annotation:jakarta.annotation-api"
+        annotationProcessor "jakarta.persistence:jakarta.persistence-api"
+        
+        //H2 데이터베이스 추가
+        runtimeOnly 'com.h2database:h2'
+        compileOnly 'org.projectlombok:lombok'
+        annotationProcessor 'org.projectlombok:lombok'
+        testImplementation 'org.springframework.boot:spring-boot-starter-test'
+        
+        //테스트에서 lombok 사용
+        testCompileOnly 'org.projectlombok:lombok'
+        testAnnotationProcessor 'org.projectlombok:lombok'
+    }
+    
+    tasks.named('test') {
+      useJUnitPlatform()
+    }
+    
+    //Querydsl 추가, 자동 생성된 Q클래스 gradle clean으로 제거
+    clean {
+      delete file('src/main/generated')
+    }
+    ```
+    
+
+### **검증 - Q 타입 생성 확인 방법**
+
+Preferences → Build, Execution, Deployment → Build Tools → Gradle
+
+![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/15211055-daa1-4567-834c-946a1f23f1a9/Untitled.png)
+
+여기에 가면 크게 2가지 옵션을 선택할 수 있는데 옵션은 둘다 같게 맞추어야 합니다.
+
+1. Gradle: Gradle을 통해서 빌드
+2. IntelliJ IDEA: IntelliJ가 직접 자바를 실행해서 빌드
+
+### 옵션 선택1 - Gradle - Q타입 생성 확인 방법
+
+**Gradle IntelliJ 사용법**
+
+- `Gradle -> Tasks -> build -> clean`
+
+![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/d18f8c47-2afd-415d-bdf3-733bb9a534cc/Untitled.png)
+
+- `Gradle -> Tasks -> other -> compileJava`
+    
+    ![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/159f7e8e-5187-40c8-a02a-b3328c78d014/Untitled.png)
+    
+
+**Gradle 콘솔 사용법**
+
+- `./gradlew clean compileJava`
+
+**Q 타입 생성 확인**
+
+- `build -> generated -> sources -> annotationProcessor -> java/main` 하위에 `hello.itemservice.domain.QItem`이 생성되어 있어야 합니다.
+
+![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/0fb53e3e-c96f-4a90-a62c-82254d76745d/Untitled.png)
+
+> 참고 - Q타입은 컴파일 시점에 자동 생성되므로 버전관리(GIT)에 포함하지 않는 것이 좋습니다. 
+gradle 옵션을 선택하면 Q타입은 gradle build 폴더 아래에 생성되기 때문에 여기를 포함하지 않아야 합니다.
+
+대부분 gradle build 폴더를 git에 포함하지 않기 때문에 이 부분은 자연스럽게 해결됩니다.
+> 
+
+**Q타입 삭제** 
+
+`gradle clean`을 수행하면 `build` 폴더 자체가 삭제되므로 별도의 설정이 필요하지 않습니다.
+
+### 옵션 선택2 - IntelliJ IDEA - Q타입 생성 확인 방법
+
+`Build -> Build Project` 또는 `Build -> Rebuild` 또는 `main()`, 또는 테스트를 실행
+
+![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/3549b8ba-263d-4bf4-9cf5-55d334097e45/Untitled.png)
+
+`src/main/generated` 하위에 `hello.itemservice.domain.QItem`이 생성되어 있어야 합니다.
+
+> 참고 - Q타입은 컴파일 시점에 자동 생성되므로 버전관리(GIT)에 포함하지 않는 것이 좋습니다. IntelliJ IDEA 옵션을 선택하면 Q타입은 src/main/generated 폴더 아래에 생성되기 때문에 여기를 포함하지 않는 것이 좋습니다.
+> 
+
+**Q타입 삭제**
+
+```java
+//Querydsl 추가, 자동 생성된 Q클래스 gradle clean으로 제거
+clean {
+  delete file('src/main/generated')
+}
+```
+
+`IntelliJ IDEA` 옵션을 선택하면 `src/main/generated`에 파일이 생성되고, 필요한 경우 Q파일을 직접 삭제해야 합니다. `gradle`에 해당 스크립트를 추가하면 `gradle clean` 명령어를 실행할 때 `src/main/generated`의 파일도 함께 삭제됩니다.
+
+### **참고**
+
+Querydsl은 이렇게 설정하는 부분이 사용하면서 조금 귀찮은 부분인데, IntelliJ가 버전업 하거나 Querydsl의 Gradle 설정이 버전업 하면서 적용 방법이 조금씩 달라지기도 합니다. 
+
+그리고 본인의 환경에 따라서 잘 동작하지 않기도 합니다. 공식 메뉴얼에 소개 되어 있는 부분이 아니기 때문에, 설정에 수고로움이 있지만 `querydsl gradle` 로 검색하면 본인 환경에 맞는 대안을 금방 찾을 수 있을 것입니다.
