@@ -4494,3 +4494,57 @@ public class ItemServiceApplication {}
 > 
 
 **이런 식으로 스프링 데이터 JPA 와 QueryDSL 을 모두 사용할 수 있습니다!**
+
+
+# 3. 다양한 데이터 접근 기술 조합
+
+### **어떤 데이터 접근 기술을 선택하는 것이 좋을까요?**
+
+이 부분은 하나의 정답이 있다기 보다는, 비즈니스 상황과, 현재 프로젝트 구성원의 역량에 따라서 결정하는 것이 맞습니다. 
+
+`JdbcTemplate`이나 `MyBatis` 같은 기술들은 SQL을 직접 작성해야 하는 단점은 있지만 기술이 단순하기 때문에 SQL에 익숙한 개발자라면 금방 적응할 수 있습니다. 
+
+JPA, 스프링 데이터 JPA, Querydsl 같은 기술들은 개발 생산성을 혁신할 수 있지만, 학습 곡선이 높기 때문에, 이런 부분을 감안해야 합니다. 그리고 매우 복잡한 통계 쿼리를 주로 작성하는 경우에는 잘 맞지 않습니다. 
+
+**JPA, 스프링 데이터 JPA, Querydsl을 기본**으로 사용하고, 만약 복잡한 쿼리를 써야 하는데, 해결이 잘 안되면 해당 **부분에는 JdbcTemplate이나 MyBatis를 함께 사용**하는 방법을 추천합니다! 
+
+**실무에서 95% 정도는 JPA, 스프링 데이터 JPA, Querydsl 등으로 해결하고, 나머지 5%는 SQL을 직접 사용**해야 하니 JdbcTemplate이나 MyBatis로 해결합니다. 물론 이 비율은 프로젝트마다 당연히 다릅니다. 
+
+아주 복잡한 통계 쿼리를 자주 작성해야 하면 JdbcTemplate이나 MyBatis의 비중이 높아질 수 있습니다.
+
+### **트랜잭션 매니저 선택**
+
+JPA, 스프링 데이터 JPA, Querydsl은 모두 JPA 기술을 사용하는 것이기 때문에 트랜잭션 매니저로 `JpaTransactionManager`를 선택하면 됩니다. 
+
+해당 기술을 사용하면 스프링 부트는 자동으로 `JpaTransactionManager`를 스프링 빈에 등록합니다. 
+
+그런데 `JdbcTemplate`, `MyBatis`와 같은 기술들은 내부에서 JDBC를 직접 사용하기 때문에 `DataSourceTransactionManager`를 사용합니다. 
+
+따라서 JPA와 JdbcTemplate 두 기술을 함께 사용하면 트랜잭션 매니저가 달라집니다. 결국 트랜잭션을 하나로 묶을 수 없는 문제가 발생할 수 있습니다.
+
+### JpaTransactionManager의 다양한 지원
+
+`JpaTransactionManager`는 놀랍게도 `DataSourceTransactionManager`가 제공하는 기능도 대부분 제공합니다. 
+
+JPA라는 기술도 결국 내부에서는 DataSource와 JDBC 커넥션을 사용하기 때문입니다. 따라서 JdbcTemplate , MyBatis 와 함께 사용할 수 있습니다. 결과적으로 `JpaTransactionManager`를 하나만 스프링 빈에 등록하면, **JPA, JdbcTemplate, MyBatis 모두를 하나의 트랜잭션으로 묶어서 사용할 수 있습니다.**
+
+**주의점** 
+
+이렇게 JPA와 JdbcTemplate을 함께 사용할 경우 JPA의 플러시 타이밍에 주의해야 합니다. JPA는 데이터를 변경하면 변경 사항을 즉시 데이터베이스에 반영하지 않습니다. 기본적으로 트랜잭션이 커밋되는 시점에 변경 사항을 데이터베이스에 반영합니다. 
+
+그래서 하나의 트랜잭션 안에서 JPA를 통해 데이터를 변경한 다음에 JdbcTemplate을 호출하는 경우 JdbcTemplate에서는 JPA가 변경한 데이터를 읽기 못하는 문제가 발생합니다. 
+
+이 문제를 해결하려면 JPA 호출이 끝난 시점에 JPA가 제공하는 플러시라는 기능을 사용해서 JPA의 변경 내역을 데이터베이스에 반영해주어야 합니다. 그래야 그 다음에 호출되는 JdbcTemplate에서 JPA가 반영한 데이터를 사용할 수 있습니다.
+
+# **정리**
+
+위에서 만든 `ItemServiceV2`는 스프링 데이터 JPA를 제공하는 `ItemRepositoryV2`도 참조하고, Querydsl과 관련된 `ItemQueryRepositoryV2`도 직접 참조합니다. 덕분에 `ItemRepositoryV2`를 통해서 스프링 데이터 JPA 기능을 적절히 활용할 수 있고, ItemQueryRepositoryV2 를 통해서 복잡한 쿼리를 Querydsl로 해결할 수 있습니다.
+
+이렇게 하면서 구조의 복잡함 없이 단순하게 개발을 할 수 있습니다. 
+
+본인이 진행하는 프로젝트의 규모가 작고, 속도가 중요하고, 프로토타입 같은 시작 단계라면 이렇게 단순하면서 라이브러리의 지원을 최대한 편리하게 받는 구조가 더 나은 선택일 수 있습니다. 하지만 이 구조는 리포지토리의 구현 기술이 변경되면 수 많은 코드를 변경해야 하는 단점이 있습니다.
+
+이런 선택에서 하나의 정답은 없습니다. 
+
+**이런 트레이드 오프를 알고, 현재 상황에 더 맞는 적절한 선택을 하는 좋은 개발자가 있을 뿐이죠!**
+
