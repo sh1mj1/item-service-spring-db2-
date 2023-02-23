@@ -4324,3 +4324,173 @@ JPA를 사용한다면 **스프링 데이터 JPA 와 Querydsl 은 실무의 다�
 
 이런 선택에서 하나의 정답이 있는 것은 아니지만, 프로젝트의 현재 상황에 맞는 더 적절한 선택지가 있을 것입니다. 그리고 현재 상황에 맞는 선택을 하는 개발자가 좋은 개발자인 것이지요!
 
+
+
+# 2. 실용적인 구조
+
+### **복잡한 쿼리 분리**
+
+![https://user-images.githubusercontent.com/52024566/202730259-2a567e82-0b02-4827-a368-4b6e21aed491.png](https://user-images.githubusercontent.com/52024566/202730259-2a567e82-0b02-4827-a368-4b6e21aed491.png)
+
+Repository 을 아래처럼 두 가지로 나눌 수 있습니다.
+
+- `ItemRepositoryV2`는 **스프링 데이터 JPA** 의 기능을 제공하는 리포지토리
+- `ItemQueryRepositoryV2`는 **Querydsl** 을 사용해서 복잡한 쿼리 기능을 제공하는 리포지토리
+
+이렇게 둘을 분리하면 기본 CRUD와 단순 조회는 스프링 데이터 JPA가 담당하고, 복잡한 조회 쿼리는 Querydsl이 담당합니다. 물론 `ItemService`는 기존 `ItemRepository`를 사용할 수 없기 때문에 코드를 변경해야 합니다.
+
+**ItemRepositoryV2**
+
+```java
+import hello.itemservice.domain.Item;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface ItemRepositoryV2 extends JpaRepository<Item, Long> {
+}
+```
+
+`ItemRepositoryV2`는 `JpaRepository`를 인터페이스 상속 받아서 스프링 데이터 JPA의 기능을 제공하는 리 포지토리가 되었습니다.
+
+기본 CRUD는 이 기능을 사용하면 될 것입니다.
+
+여기에 추가로 네이밍 규칙을 따르는 단순한 조회 쿼리들을 추가할 수 있습니다.
+
+`ItemQueryRepositoryV2`
+
+```java
+import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.jpa.impl.JPAQueryFactory;
+import hello.itemservice.domain.Item;
+import hello.itemservice.repository.ItemSearchCond;
+import org.springframework.stereotype.Repository;
+import org.springframework.util.StringUtils;
+
+import javax.persistence.EntityManager;
+import java.util.List;
+
+import static hello.itemservice.domain.QItem.item;
+
+@Repository
+public class ItemQueryRepositoryV2 {
+  
+    private final JPAQueryFactory query;
+  
+    public ItemQueryRepositoryV2(EntityManager em) {
+        this.query = new JPAQueryFactory(em);
+    }
+  
+    public List<Item> findAll(ItemSearchCond cond) {
+        return query.select(item)
+          .from(item)
+          .where(
+              maxPrice(cond.getMaxPrice()),
+              likeItemName(cond.getItemName()))
+          .fetch();
+    }
+  
+    private BooleanExpression likeItemName(String itemName) {
+        if (StringUtils.hasText(itemName)) {
+            return item.itemName.like("%" + itemName + "%");
+        }
+        return null;
+    }
+  
+    private BooleanExpression maxPrice(Integer maxPrice) {
+        if (maxPrice != null) {
+            return item.price.loe(maxPrice);
+        }
+        return null;
+    }
+}
+```
+
+`ItemQueryRepositoryV2`는 Querydsl 을 사용해서 복잡한 쿼리 문제를 해결할 수 있습니다.
+
+Querydsl 을 사용한 쿼리 문제에 집중되어 있어서, 복잡한 쿼리는 이 부분만 유지보수 하면 되는 장점이 있습니다.
+
+**ItemServiceV2**
+
+```java
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class ItemServiceV2 implements ItemService {
+
+    private final ItemRepositoryV2 itemRepositoryV2;
+    private final ItemQueryRepositoryV2 itemQueryRepositoryV2;
+
+    @Override
+    public Item save(Item item) {
+        return itemRepositoryV2.save(item);
+    }
+
+    @Override
+    public void update(Long itemId, ItemUpdateDto updateParam) {
+        Item findItem = findById(itemId).orElseThrow();
+        findItem.setItemName(updateParam.getItemName());
+        findItem.setPrice(updateParam.getPrice());
+        findItem.setQuantity(updateParam.getQuantity());
+    }
+
+    @Override
+    public Optional<Item> findById(Long id) {
+        return itemRepositoryV2.findById(id);
+    }
+
+    @Override
+    public List<Item> findItems(ItemSearchCond cond) {
+        return itemQueryRepositoryV2.findAll(cond);
+    }
+}
+```
+
+기존 `ItemServiceV1` 코드를 남겨두기 위해서 `ItemServiceV2` 을 새로 생성했습니다.
+
+`ItemServiceV2`는 `ItemRepositoryV2`와 `ItemQueryRepositoryV2`를 의존합니다.
+
+`V2Config`
+
+```java
+@Configuration
+@RequiredArgsConstructor
+public class V2Config {
+  
+    private final EntityManager em;
+    private final ItemRepositoryV2 itemRepositoryV2; //SpringDataJPA
+  
+    @Bean
+    public ItemService itemService() {
+        return new ItemServiceV2(itemRepositoryV2, itemQueryRepository());
+    }
+  
+    @Bean
+    public ItemQueryRepositoryV2 itemQueryRepository() {
+        return new ItemQueryRepositoryV2(em);
+    }
+  
+    @Bean
+    public ItemRepository itemRepository() {
+        return new JpaItemRepositoryV3(em);
+    }
+}
+```
+
+`ItemServiceV2`를 등록한 부분을 주의합시다. `ItemServiceV1`이 아니라 `ItemServiceV2` 입니다.
+
+`ItemRepository`는 테스트에서 사용하므로 여전히 필요합니다.
+
+**ItemServiceApplication - 변경**
+
+```java
+//@Import(QuerydslConfig.class)
+@Import(V2Config.class)
+@SpringBootApplication(scanBasePackages = "hello.itemservice.web")
+public class ItemServiceApplication {}
+```
+
+`V2Config`를 사용하도록 변경합니다.
+
+> 참고: 스프링 데이터 JPA가 제공하는 커스텀 리포지토리를 사용해도 비슷하게 문제를 해결할 수는 있습니다.
+> 
+
+**이런 식으로 스프링 데이터 JPA 와 QueryDSL 을 모두 사용할 수 있습니다!**
