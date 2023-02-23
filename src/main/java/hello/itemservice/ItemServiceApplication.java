@@ -7,6 +7,7 @@ import hello.itemservice.config.jdbctemplate.JdbcTemplateV3Config;
 import hello.itemservice.config.jpa.JpaConfig;
 import hello.itemservice.config.jpa.SpringDataJpaConfig;
 import hello.itemservice.config.mybatis.MyBatisConfig;
+import hello.itemservice.config.querydsl.QuerydslConfig;
 import hello.itemservice.repository.ItemRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
@@ -25,7 +26,8 @@ import javax.sql.DataSource;
 //@Import(JdbcTemplateV3Config.class)
 //@Import(MyBatisConfig.class)
 //@Import(JpaConfig.class)
-@Import(SpringDataJpaConfig.class)
+//@Import(SpringDataJpaConfig.class)
+@Import(QuerydslConfig.class)
 @SpringBootApplication(scanBasePackages = "hello.itemservice.web")
 public class ItemServiceApplication {
 
